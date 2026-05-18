@@ -5,7 +5,7 @@
 [![Paper ECCV 2026](https://img.shields.io/badge/Paper-ECCV%202026-red)](https://peiwensun2000.github.io/xstream/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-![X-Stream logo](assets/logo.png)
+<img src="assets/logo.png" alt="X-Stream logo" width="10%">
 
 Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**. This package runs online multi-stream video QA with local vLLM checkpoints or hosted API models.
 
