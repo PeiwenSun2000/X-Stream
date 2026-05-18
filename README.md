@@ -1,15 +1,11 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
-<p align="center">
-  <img src="assets/logo.png" alt="X-Stream logo" width="10%">
-</p>
-
-<h1 align="center">X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding</h1>
+# <img src="assets/logo.png" alt="X-Stream logo" width="10%">X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding
 
 <p align="center">
   <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Project-Website-blue" alt="Project Website"></a>
   <a href="https://huggingface.co/datasets/spw2000/X-stream"><img src="https://img.shields.io/badge/Dataset-HuggingFace-yellow" alt="Dataset HuggingFace"></a>
-  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Paper-ECCV%202026-red" alt="Paper ECCV 2026"></a>
+  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Paper-arXiv-red" alt="Paper arXiv"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
 </p>
 
@@ -184,7 +180,7 @@ Useful flags:
 @inproceedings{sun2026xstream,
   title     = {X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding},
   author    = {Sun, Peiwen and Lu, Xudong and Liu, Huadai and Bo, Yang and Wu, Dongming and Guan, Huankang and Cai, Minghong and Chen, Jinpeng and Guo, Xintong and Li, Shuhan and Liu, Rui and Yue, Xiangyu},
-  booktitle = {ECCV},
+  booktitle = {arXiv},
   year      = {2026}
 }
 ```
