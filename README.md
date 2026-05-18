@@ -1,13 +1,23 @@
-# <img src="assets/logo.png" alt="X-Stream logo" width="10%"> X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding.
+<!-- markdownlint-disable MD033 MD041 -->
 
-[![Project Website](https://img.shields.io/badge/Project-Website-blue)](https://peiwensun2000.github.io/xstream/)
-[![Dataset HuggingFace](https://img.shields.io/badge/Dataset-HuggingFace-yellow)](https://huggingface.co/datasets/spw2000/X-stream)
-[![Paper ECCV 2026](https://img.shields.io/badge/Paper-ECCV%202026-red)](https://peiwensun2000.github.io/xstream/)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+<p align="center">
+  <img src="assets/logo.png" alt="X-Stream logo" width="10%">
+</p>
+
+<h1 align="center">X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding</h1>
+
+<p align="center">
+  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Project-Website-blue" alt="Project Website"></a>
+  <a href="https://huggingface.co/datasets/spw2000/X-stream"><img src="https://img.shields.io/badge/Dataset-HuggingFace-yellow" alt="Dataset HuggingFace"></a>
+  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Paper-ECCV%202026-red" alt="Paper ECCV 2026"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
+</p>
 
 Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**. This package runs online multi-stream video QA with local vLLM checkpoints or hosted API models.
 
-![X-Stream teaser](assets/teaser.png)
+<p align="center">
+  <img src="assets/teaser.png" alt="X-Stream teaser">
+</p>
 
 ## Abstract
 
@@ -15,20 +25,9 @@ X-Stream is a multi-stream streaming understanding benchmark for evaluating how 
 
 ## Pipeline
 
-![X-Stream multiplexing pipeline](assets/multiplexing_pipeline.png)
-
-```mermaid
-flowchart LR
-    inputJsonl["X-Stream JSONL"] --> runner["run.sh"]
-    runner --> backend{"Backend"}
-    backend -->|"local"| vllm["vLLM"]
-    backend -->|"API"| modelApi["Hosted API"]
-    vllm --> flow["MLLMFlow"]
-    modelApi --> flow
-    flow --> outputJsonl["Output JSONL"]
-    outputJsonl --> evalStep{"stream-eval"}
-    evalStep -->|"optional"| scores["eval.json"]
-```
+<p align="center">
+  <img src="assets/multiplexing_pipeline.png" alt="X-Stream multiplexing pipeline" width="90%">
+</p>
 
 Supported multi-stream modes:
 
