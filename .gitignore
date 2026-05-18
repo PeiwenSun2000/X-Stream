@@ -1,0 +1,47 @@
+# Run artifacts (every RUN_DIR under outputs/)
+outputs/
+cache/
+logs/
+*.log
+*.pid
+nohup.out
+moviepy_tmp/
+
+# Test inputs / scratch produced by tests/make_samples.sh and QA runs
+tests/sample_*.jsonl
+tests/run_log.md
+tests/*.out
+
+# Live secrets — only configs/models.example.json is tracked
+configs/models.json
+configs/*.local.json
+
+# Local/generated release notes
+README.local.md
+README.explained.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+# Note: uv.lock IS tracked for reproducibility
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Vendored package build artifacts
+third_party/*/build/
+third_party/*/dist/
+third_party/*/*.egg-info/
+third_party/*/demo/*.mp4
+third_party/*/demo/*.png

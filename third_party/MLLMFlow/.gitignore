@@ -1,0 +1,9 @@
+.venv/
+.vscode/
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
+.DS_Store
+
+logs/
+media_dir/

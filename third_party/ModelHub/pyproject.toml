@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-hub"
+version = "1.0.0"
+description = "A unified model hub for managing and calling multiple AI model APIs"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.28.0",
+    "json-repair>=0.7.0",
+]
+
+[tool.setuptools]
+packages = ["model_hub", "model_hub.adapters"]

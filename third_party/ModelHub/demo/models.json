@@ -1,0 +1,80 @@
+{
+    "gemini-3-pro-preview": [
+        {
+            "weight": 0.5,
+            "adapter": "gemini",
+            "model_name": "gemini-3-pro-preview",
+            "endpoint": "https://yunwu.ai/v1beta/models/{model_name}:generateContent?key={api_key}",
+            "api_key": "${GEMINI_API_KEY}",
+            "max_video_size_mb": 20,
+            "request_params": {}
+        },
+        {
+            "weight": 0.5,
+            "adapter": "gemini",
+            "model_name": "gemini-3-pro-preview",
+            "endpoint": "https://yibuapi.com/v1beta/models/{model_name}:generateContent?key={api_key}",
+            "api_key": "${GEMINI_API_KEY}",
+            "max_video_size_mb": 20
+        }
+    ],
+    "Qwen3-Omni-30B-A3B-Instruct": [
+        {
+            "adapter": "qwen_local",
+            "model_name": "Qwen3-Omni-30B-A3B-Instruct",
+            "endpoint": "http://localhost:8000/v1/chat/completions",
+            "health_check_endpoint": "http://localhost:8000/health"
+        }
+    ],
+    "doubao-seed-1-8-251228": [
+        {
+            "adapter": "doubao",
+            "model_name": "doubao-seed-1-8-251228",
+            "endpoint": "https://yunwu.ai/v1/chat/completions",
+            "api_key": "${DOUBAO_API_KEY}"
+        }
+    ],
+    "doubao-seedream-4-0-250828": [
+        {
+            "adapter": "seedream",
+            "model_name": "doubao-seedream-4-0-250828",
+            "endpoint": "https://yibuapi.com/v1/images/generations",
+            "api_key": "${SEEDREAM_API_KEY}"
+        }
+    ],
+    "gpt-4o": [
+        {
+            "adapter": "openai",
+            "model_name": "gpt-4o",
+            "endpoint": "https://yunwu.ai/v1/chat/completions",
+            "api_key": "${OPENAI_API_KEY}"
+        }
+    ],
+    "qwen3-235b-a22b-instruct-2507": [
+        {
+            "adapter": "doubao",
+            "model_name": "qwen3-235b-a22b-instruct-2507",
+            "endpoint": "https://yunwu.ai/v1/chat/completions",
+            "api_key": "${QWEN_API_KEY}",
+            "request_params": {
+                "temperature": 0.7,
+                "top_k": 50
+            }
+        }
+    ],
+    "qwen3-vl-235b-a22b-instruct": [
+        {
+            "adapter": "qwen",
+            "model_name": "qwen3-vl-235b-a22b-instruct",
+            "endpoint": "https://yibuapi.com/v1/chat/completions",
+            "api_key": "${QWEN_API_KEY}",
+            "max_video_size_mb": 50
+        }
+    ],
+    "echo": [
+        {
+            "adapter": "echo",
+            "model_name": "echo"
+        }
+    ]
+}

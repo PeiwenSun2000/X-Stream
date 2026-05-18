@@ -1,0 +1,77 @@
+{
+    "_comment": "Logical-name -> list of backends. process_config.py rewrites the chosen entry to a local vLLM endpoint at runtime. API keys are read from environment variables; copy this file to models.json and edit as needed.",
+
+    "Qwen3-Omni-30B-A3B-Instruct": [
+        {
+            "adapter": "doubao",
+            "model_name": "Qwen3-Omni-30B-A3B-Instruct",
+            "endpoint": "http://localhost:8901/v1/chat/completions",
+            "is_vllm_local": true
+        }
+    ],
+    "Qwen3-VL-235B-A22B-Instruct-FP8": [
+        {
+            "adapter": "doubao",
+            "model_name": "Qwen3-VL-235B-A22B-Instruct-FP8",
+            "endpoint": "http://localhost:8901/v1/chat/completions",
+            "is_vllm_local": true
+        }
+    ],
+    "Qwen3-VL-235B-A22B-Instruct-NVFP4": [
+        {
+            "adapter": "doubao",
+            "model_name": "Qwen3-VL-235B-A22B-Instruct-NVFP4",
+            "endpoint": "http://localhost:8901/v1/chat/completions",
+            "is_vllm_local": true
+        }
+    ],
+    "Qwen3-VL-30B-A3B-Instruct": [
+        {
+            "adapter": "doubao",
+            "model_name": "Qwen3-VL-30B-A3B-Instruct",
+            "endpoint": "http://localhost:8901/v1/chat/completions",
+            "is_vllm_local": true
+        }
+    ],
+
+    "qwen3-vl-30b-a3b-instruct": [
+        {
+            "adapter": "openai",
+            "model_name": "qwen/qwen3-vl-30b-a3b-instruct",
+            "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+            "api_key": "${OPENROUTER_API_KEY}"
+        }
+    ],
+    "qwen-2.5-vl-7b-instruct": [
+        {
+            "adapter": "openai",
+            "model_name": "qwen/qwen-2.5-vl-7b-instruct",
+            "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+            "api_key": "${OPENROUTER_API_KEY}"
+        }
+    ],
+    "gpt-4o": [
+        {
+            "adapter": "openai",
+            "model_name": "gpt-4o",
+            "endpoint": "https://api.openai.com/v1/chat/completions",
+            "api_key": "${OPENAI_API_KEY}"
+        }
+    ],
+
+    "qwen3-235b-a22b-instruct-2507": [
+        {
+            "adapter": "doubao",
+            "model_name": "qwen3-235b-a22b-instruct-2507",
+            "endpoint": "${QWEN_ENDPOINT}",
+            "api_key": "${QWEN_API_KEY}"
+        }
+    ],
+
+    "echo": [
+        {"adapter": "echo", "model_name": "echo"}
+    ],
+    "deepecho": [
+        {"adapter": "deepecho", "model_name": "deepecho"}
+    ]
+}

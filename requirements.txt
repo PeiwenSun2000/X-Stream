@@ -1,0 +1,24 @@
+# X-Stream inference — minimal pip requirements (fallback for users without uv).
+#
+# Recommended path is `uv sync --extra local` (see README.md). This file is
+# provided so a stock `python -m venv + pip install -r requirements.txt`
+# workflow still works.
+#
+# Versions match the exact set validated in this release (Python 3.12.12).
+# After installing this file, install the three vendored editables:
+#   pip install -e third_party/MLLMFlow third_party/ModelHub third_party/stream-eval
+
+vllm==0.19.0
+transformers==4.57.3
+torch==2.10.0
+
+# MLLMFlow + ModelHub runtime
+requests>=2.32.0
+moviepy==2.2.1
+json-repair>=0.55.0
+numpy>=2.2.0
+tqdm>=4.66.0
+
+# API adapters
+openai>=1.50.0
+aiohttp>=3.10.0

@@ -1,0 +1,9 @@
+{
+    "Qwen3-Omni-30B-A3B-Instruct": [
+        {
+            "adapter": "qwen",
+            "model_name": "Qwen3-Omni-30B-A3B-Instruct",
+            "endpoint": "http://localhost:8901/v1/chat/completions"
+        }
+    ]
+}

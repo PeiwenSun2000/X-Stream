@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stream-eval"
+version = "0.1.1"
+description = "StreamEval evaluation"
+requires-python = ">=3.10"
+dependencies = [
+    "json-repair",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+stream-eval = "stream_eval.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["stream_eval*"]
