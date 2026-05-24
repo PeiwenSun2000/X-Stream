@@ -26,10 +26,10 @@ from mllmflow.utils import (
 
 
 class MLLMFlow:
-    """多模态智能对话流程构建工具
+    """Multimodal intelligent conversation workflow builder
 
-    支持通过 JSON 格式模板定义多轮对话，集成文本、图像、视频等多种输入，
-    并调用大语言模型进行处理。
+    Supports defining multi-turn conversations with JSON templates and integrating text, image, video, and other inputs,
+    then calling large language models for processing.
 
     Example:
         >>> flow = MLLMFlow("models.json")
@@ -56,19 +56,19 @@ class MLLMFlow:
         memory_bank_model: Optional[str] = None,
         memory_bank_log_dir: Optional[str] = None,
     ):
-        """初始化 MLLMFlow
+        """Initialize MLLMFlow
 
         Args:
-            models_config: 模型配置文件路径（JSON 格式），支持字符串或 Path 对象
-            cache_dir: 媒体文件缓存目录，用于存储处理后的视频和图片
-            model_replacement: 模型名称替换映射，如 {"gpt-4o": "gemini-pro-3-preview"}
-            multi_stream_mode: 多流模式。
-                - "pixel" 或默认：非 multi-stream，单路/按模板顺序。
-                - "time"：双流按时间片段交错，A1 B1 A2 B2 ...，每段带 Stream 1/2 标签。
-                - "code"：每段比较两路变化量，只输入变化较大的一路视频，另一路用 "Stream N: Unchanged" 代替。
-                - "code_adaptive"：依据每段两路视频的变化量自适应控制像素大小（通过 fps 缩放），
-                  对变化更大的一路使用更高像素（最多 2.0 倍），变化更小的一路使用更低像素（可接近 0）。
-                  若某一路在该段完全无变化，则该路输出 "Stream N: Unchanged"，另一条使用满像素（2.0 倍）。
+            models_config: Path to the model configuration file (JSON format), supporting strings or Path objects
+            cache_dir: Media cache directory for storing processed videos and images
+            model_replacement: Model name replacement mapping, such as {"gpt-4o": "gemini-pro-3-preview"}
+            multi_stream_mode: Multi-stream mode.
+                - "pixel" or default: non-multi-stream, single stream / template order.
+                - "time"：Dual streams interleaved by time segment, A1 B1 A2 B2 ..., with Stream 1/2 labels for each segment.
+                - "code"：Compare the two streams' change magnitude for each segment, input only the stream with larger changes, and replace the other with "Stream N: Unchanged".
+                - "code_adaptive"：Adaptively control pixel scale based on the change magnitude of the two video streams in each segment (via fps scaling),
+                  using higher pixel scale for the stream with larger changes (up to 2.0x) and lower pixel scale for the stream with smaller changes (can approach 0).
+                  If one stream has no changes in that segment, output "Stream N: Unchanged" for that stream and use full pixel scale (2.0x) for the other.
         """
         self.hub = ModelHub(models_config)
         self.cache_dir = cache_dir
@@ -87,11 +87,53 @@ class MLLMFlow:
                 f"memory_bank_audit_{int(time.time() * 1000)}_{os.getpid()}.jsonl"
             )
         self.multi_stream_mode = (multi_stream_mode or "pixel").strip().lower()
-        if self.multi_stream_mode not in ("pixel", "time", "code", "code_adaptive", "cdpruner", "surge"):
+        # New modes ``surge_token`` and ``cdpruner_token`` route to the
+        # xstream_vllm_pruner plugin running inside the local vLLM worker.
+        # They are accepted here so the MLLMFlow runtime is consistent; the
+        # actual constraint that the backend must be local vLLM is enforced
+        # later, when a model name is resolved.
+        if self.multi_stream_mode not in (
+            "pixel",
+            "time",
+            "code",
+            "code_adaptive",
+            "cdpruner",
+            "surge",
+            "cdpruner_token",
+            "surge_token",
+        ):
             self.multi_stream_mode = "pixel"
         self._placeholder_re = re.compile(r"\{\{(\w+):([^}]+)\}\}")
 
     TModel = TypeVar("TModel", bound=BaseModel)
+
+    def _require_local_vllm_backend(self, model_name: str) -> None:
+        """Ensure every backend registered for ``model_name`` is local vLLM.
+
+        Used by the ``cdpruner_token`` / ``surge_token`` multi-stream modes
+        which rely on the xstream_vllm_pruner plugin running inside a local
+        vLLM worker. Hosted APIs cannot honour these modes because we have no
+        way to install the patch-level pruner there.
+        """
+        configs = self.hub.models_config.get(model_name)
+        if not configs:
+            raise ValueError(
+                f"multi_stream_mode={self.multi_stream_mode!r} requires a local "
+                f"vLLM backend, but model {model_name!r} is not registered in "
+                f"the model hub."
+            )
+        bad = [
+            cfg for cfg in configs if not bool(cfg.get("is_vllm_local", False))
+        ]
+        if bad:
+            adapters = sorted({cfg.get("adapter", "<unknown>") for cfg in bad})
+            raise ValueError(
+                f"multi_stream_mode={self.multi_stream_mode!r} is only supported "
+                f"when every backend for model {model_name!r} has "
+                f"is_vllm_local=True (found adapters: {adapters}). Use one of "
+                f"the existing modes (pixel/time/code/code_adaptive/cdpruner/"
+                f"surge) for hosted API models."
+            )
 
     def _call_memory_llm(
         self, prompt: str, response_format: Optional[Type[TModel]] = None
@@ -234,25 +276,25 @@ class MLLMFlow:
             with self._memory_audit_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(payload, ensure_ascii=False) + "\n")
         except OSError:
-            # 审计日志失败不应影响主推理流程。
+            # Audit logging failures should not affect the main inference flow.
             pass
 
     def run(self, template: Dict[str, Any]) -> Dict[str, Any]:
-        """执行模板流程
+        """Execute the template workflow
 
         Args:
-            template: JSON 格式模板，包含 vars 和 rounds
+            template: JSON template containing vars and rounds
 
         Returns:
-            包含以下键的字典：
-            - vars: 最终变量字典
-            - rounds: 每轮对话的完整消息列表
+            Dictionary containing the following keys:
+            - vars: Final variables dictionary
+            - rounds: Complete message list for each conversation round
 
         Example:
             >>> template = {"vars": {}, "rounds": [{"round_id": "1", "messages": [...]}]}
             >>> result = flow.run(template)
-            >>> print(result["vars"])  # 查看变量
-            >>> print(result["rounds"])  # 查看对话轮次
+            >>> print(result["vars"])  # Inspect variables
+            >>> print(result["rounds"])  # Inspect conversation rounds
         """
         variables = dict(template.get("vars", {}))
         rounds = template.get("rounds", [])
@@ -281,6 +323,45 @@ class MLLMFlow:
 
         return {"vars": variables, "rounds": rounds_out}
 
+    def warm_video_cache(self, template: Dict[str, Any]) -> Dict[str, int]:
+        """Resolve video placeholders only, forcing segment cache creation without model calls."""
+        variables = dict(template.get("vars", {}))
+        rounds = template.get("rounds", [])
+        video_messages = 0
+        video_segments = 0
+
+        for round_data in rounds:
+            round_id = str(round_data.get("round_id", "round"))
+            round_parts: List[Dict] = []
+
+            for turn_id, msg in enumerate(round_data.get("messages", []), 1):
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if not isinstance(content, str) or "{{video:" not in content:
+                    continue
+
+                video_messages += 1
+                content = re.sub(r"\{\{(?!video:)[^}]+\}\}", "", content)
+                resolved = self._resolve_content(
+                    content,
+                    variables,
+                    round_parts,
+                    request_id=f"{round_id}_{turn_id}_warm",
+                )
+                video_segments += sum(1 for part in resolved if part.get("type") == "video")
+                round_parts.append({"type": "role", "role": role})
+                round_parts.extend(resolved)
+
+        return {"video_messages": video_messages, "video_segments": video_segments}
+
+    @staticmethod
+    def _resolve_video_end(resource: str, kwargs: Dict[str, str]) -> float:
+        """Return explicit end time when provided; probe duration only as a fallback."""
+        end = kwargs.get("end")
+        if end not in (None, ""):
+            return float(end)
+        return float(_probe_video_duration(resource))
+
     def _resolve_content(
         self,
         template: str,
@@ -288,13 +369,27 @@ class MLLMFlow:
         context_parts: List[Dict],
         request_id: str = "",
     ) -> List[Dict]:
-        """解析内容中的占位符。multi_stream_mode 为 time/code 时，对多路 video(step) 做特殊处理。"""
+        """Resolve placeholders in content. When multi_stream_mode is time/code, apply special handling for multiple video(step) placeholders."""
         matches = list(self._placeholder_re.finditer(template))
 
-        # time / code / code_adaptive / cdpruner / surge 模式：收集所有带 step 的 video 占位符，若有 >=2 个则走多流逻辑
+        # time / code / code_adaptive / cdpruner / surge / *_token modes:
+        # collect all video placeholders with step; use multi-stream logic
+        # when there are at least two
         video_step_indices: List[int] = []
         video_specs: List[Tuple[str, Dict[str, str]]] = []
-        if self.multi_stream_mode in ("time", "code", "code_adaptive", "cdpruner", "surge") and matches:
+        if (
+            self.multi_stream_mode
+            in (
+                "time",
+                "code",
+                "code_adaptive",
+                "cdpruner",
+                "surge",
+                "cdpruner_token",
+                "surge_token",
+            )
+            and matches
+        ):
             for idx, m in enumerate(matches):
                 tag_type = m.group(1)
                 args_str = m.group(2)
@@ -306,8 +401,15 @@ class MLLMFlow:
                 video_step_indices.append(idx)
                 video_specs.append((resource, kwargs))
 
-        # cdpruner / surge 模式在多流展开阶段沿用 time 的交错逻辑，真正的 token 选择在对应的 media_limit 函数中完成
-        if self.multi_stream_mode in ("time", "cdpruner", "surge") and len(video_specs) >= 2:
+        # cdpruner / surge / *_token modes reuse time-mode interleaving during
+        # multi-stream expansion; the actual token selection is performed in
+        # the corresponding media_limit function (or, for ``*_token`` modes,
+        # inside the vLLM worker via the xstream_vllm_pruner plugin).
+        if (
+            self.multi_stream_mode
+            in ("time", "cdpruner", "surge", "cdpruner_token", "surge_token")
+            and len(video_specs) >= 2
+        ):
             return self._resolve_content_multi_stream(
                 template, matches, video_step_indices, video_specs, variables, context_parts, request_id
             )
@@ -320,7 +422,7 @@ class MLLMFlow:
                 template, matches, video_step_indices, video_specs, variables, context_parts, request_id
             )
 
-        # 原有逻辑：顺序解析每个占位符
+        # Original logic: resolve each placeholder in order
         parts = []
         last_end = 0
         for match in matches:
@@ -361,13 +463,13 @@ class MLLMFlow:
         context_parts: List[Dict],
         request_id: str = "",
     ) -> List[Dict]:
-        """time 模式：多个 video(step) 按片段交错输出，且每个视频前插入对应 stream 标签（Stream 1: / Stream 2:）。
-        每段输出 2 个视频（A_i, B_i），总视频数 = 2 * n_segments；单视频时为 n_segments。"""
+        """time mode: output multiple video(step) placeholders interleaved by segment and insert the corresponding stream label before each video (Stream 1: / Stream 2:).
+        Each segment outputs 2 videos (A_i, B_i), so total videos = 2 * n_segments; for one video, the count is n_segments."""
         parts: List[Dict] = []
         first_idx = video_step_indices[0]
         last_idx = video_step_indices[-1]
 
-        # 从模板中提取每个 stream 的标签（占位符前的文本，如 "Stream 1: "、"\nStream 2: "）
+        # Extract each stream's label from the template (text before the placeholder, such as "Stream 1: " or "\nStream 2: ")
         stream_labels: List[str] = []
         for k, idx in enumerate(video_step_indices):
             if k == 0:
@@ -376,20 +478,20 @@ class MLLMFlow:
                 span = template[matches[video_step_indices[k - 1]].end() : matches[idx].start()]
             stream_labels.append(span)
 
-        # 计算片段数（以第一个 video 的 step 为准，要求各 stream 范围一致）
+        # Compute the number of segments (based on the first video's step; all stream ranges are expected to match)
         _, kw0 = video_specs[0]
         start = float(kw0.get("start", 0))
-        end = float(kw0.get("end", _probe_video_duration(video_specs[0][0]) if video_specs else 0))
+        end = self._resolve_video_end(video_specs[0][0], kw0) if video_specs else 0.0
         step = float(kw0["step"])
         n_segments = max(0, int((end - start) / step) if step else 0)
 
-        # 按片段交错：每段内对每个 stream 先输出该 stream 的标签文本，再输出视频片段 → Stream 1: [A1] Stream 2: [B1] Stream 1: [A2] Stream 2: [B2] ...
+        # Interleave by segment: within each segment, output the stream label text first and then the video clip for each stream -> Stream 1: [A1] Stream 2: [B1] Stream 1: [A2] Stream 2: [B2] ...
         for seg_i in range(n_segments):
             for stream_idx, (resource, kwargs) in enumerate(video_specs):
                 if stream_idx < len(stream_labels) and stream_labels[stream_idx]:
                     parts.append({"type": "text", "text": stream_labels[stream_idx]})
                 s = float(kwargs.get("start", 0))
-                e = float(kwargs.get("end", _probe_video_duration(resource)))
+                e = self._resolve_video_end(resource, kwargs)
                 st = float(kwargs.get("step", 1))
                 c_dir = kwargs.get("cache_dir", self.cache_dir)
                 f = float(kwargs["fps"]) if kwargs.get("fps") else None
@@ -398,7 +500,7 @@ class MLLMFlow:
                 clip_path = _trim_video_cached(resource, int(current_start), int(current_end), c_dir, f)
                 parts.append({"type": "video", "video": clip_path})
 
-        # 仅保留最后一个 video 占位符之后的文本（如问题 "\nWhat is the man's..."）
+        # Keep only the text after the last video placeholder (for example, the question "\nWhat is the man's...")
         after_last = matches[last_idx].end()
         if after_last < len(template):
             trailing = template[after_last:]
@@ -417,11 +519,11 @@ class MLLMFlow:
         context_parts: List[Dict],
         request_id: str = "",
     ) -> List[Dict]:
-        """code 模式：每段比较两路变化量，只输入变化较大的一路视频，另一路用 "Stream N: Unchanged" 代替。"""
+        """code mode: Compare the two streams' change magnitude for each segment, input only the stream with larger changes, and replace the other with "Stream N: Unchanged"."""
         parts: List[Dict] = []
         last_idx = video_step_indices[-1]
 
-        # 从模板中提取每个 stream 的标签（如 "Stream 1: "、"\nStream 2: "）
+        # Extract each stream's label from the template (for example, "Stream 1: " or "\nStream 2: ")
         stream_labels: List[str] = []
         for k, idx in enumerate(video_step_indices):
             if k == 0:
@@ -432,7 +534,7 @@ class MLLMFlow:
 
         _, kw0 = video_specs[0]
         start = float(kw0.get("start", 0))
-        end = float(kw0.get("end", _probe_video_duration(video_specs[0][0]) if video_specs else 0))
+        end = self._resolve_video_end(video_specs[0][0], kw0) if video_specs else 0.0
         step = float(kw0["step"])
         n_segments = max(0, int((end - start) / step) if step else 0)
 
@@ -440,7 +542,7 @@ class MLLMFlow:
             clip_paths: List[str] = []
             for stream_idx, (resource, kwargs) in enumerate(video_specs):
                 s = float(kwargs.get("start", 0))
-                e = float(kwargs.get("end", _probe_video_duration(resource)))
+                e = self._resolve_video_end(resource, kwargs)
                 st = float(kwargs.get("step", 1))
                 c_dir = kwargs.get("cache_dir", self.cache_dir)
                 f = float(kwargs["fps"]) if kwargs.get("fps") else None
@@ -449,7 +551,7 @@ class MLLMFlow:
                 clip_path = _trim_video_cached(resource, int(current_start), int(current_end), c_dir, f)
                 clip_paths.append(clip_path)
 
-            # 计算每路变化量，选择变化较大的一路输出视频，另一路输出 "Stream N: Unchanged"
+            # Compute each stream's change magnitude, output the stream with larger changes, and output "Stream N: Unchanged" for the other stream
             scores = [video_change_score(p) for p in clip_paths]
             n_streams = len(video_specs)
             chosen = 0
@@ -457,14 +559,14 @@ class MLLMFlow:
                 if scores[i] > scores[chosen]:
                     chosen = i
 
-            # 固定顺序：始终先 Stream 1 再 Stream 2（…），每路先出标签再出视频或 Unchanged（Unchanged 不再重复标签避免 "Stream 2: Stream 2: Unchanged"）
+            # Fixed order: always output Stream 1 before Stream 2 (...); for each stream, output the label first and then the video or Unchanged (Unchanged does not repeat the label to avoid "Stream 2: Stream 2: Unchanged")
             for stream_idx in range(n_streams):
                 if stream_idx == chosen:
                     if stream_idx < len(stream_labels) and stream_labels[stream_idx]:
                         parts.append({"type": "text", "text": stream_labels[stream_idx]})
                     parts.append({"type": "video", "video": clip_paths[stream_idx]})
                 else:
-                    # 只输出 "Stream N: Unchanged"，不再加该路 label（label 已隐含在 Unchanged 里）
+                    # Output only "Stream N: Unchanged" without adding that stream's label again (the label is already implied in Unchanged)
                     parts.append({"type": "text", "text": f"Stream {stream_idx + 1}: Unchanged\n"})
 
         after_last = matches[last_idx].end()
@@ -485,15 +587,15 @@ class MLLMFlow:
         context_parts: List[Dict],
         request_id: str = "",
     ) -> List[Dict]:
-        """code_adaptive 模式：
-        - 依据每个时间片段两路视频的变化量（video_change_score）自适应控制像素大小；
-        - 通过调节 fps，将像素大小控制在 0～2 倍之间；
-        - 当一条完全无变化（score=0）且另一条有变化时，无变化的一路输出 "Stream N: Unchanged"，有变化的一路使用满像素（2 倍）。
+        """code_adaptive mode:
+        - Adaptively control pixel scale based on the change magnitude (video_change_score) of the two video streams in each time segment;
+        - Control pixel scale between 0 and 2x by adjusting fps;
+        - When one stream has no changes (score=0) and the other has changes, output "Stream N: Unchanged" for the unchanged stream and use full pixel scale (2x) for the changed stream.
         """
         parts: List[Dict] = []
         last_idx = video_step_indices[-1]
 
-        # 从模板中提取每个 stream 的标签（如 "Stream 1: "、"\nStream 2: "）
+        # Extract each stream's label from the template (for example, "Stream 1: " or "\nStream 2: ")
         stream_labels: List[str] = []
         for k, idx in enumerate(video_step_indices):
             if k == 0:
@@ -502,33 +604,33 @@ class MLLMFlow:
                 span = template[matches[video_step_indices[k - 1]].end() : matches[idx].start()]
             stream_labels.append(span)
 
-        # 以第一个 video 的 step 为准估算片段数
+        # Estimate the number of segments based on the first video's step
         _, kw0 = video_specs[0]
         start = float(kw0.get("start", 0))
-        end = float(kw0.get("end", _probe_video_duration(video_specs[0][0]) if video_specs else 0))
+        end = self._resolve_video_end(video_specs[0][0], kw0) if video_specs else 0.0
         step = float(kw0["step"])
         n_segments = max(0, int((end - start) / step) if step else 0)
 
-        # 为了稳定性，未显式提供 fps 时使用一个基础 fps（例如 2.0）
+        # For stability, use a base fps (for example, 2.0) when fps is not explicitly provided
         BASE_FPS_DEFAULT = 2.0
         MIN_SCALE = 0.0
         MAX_SCALE = 2.0
 
         for seg_i in range(n_segments):
             scores: List[float] = []
-            # 先为每个 stream 计算这一时间片段的变化量
+            # First compute the change magnitude for each stream in this time segment
             segment_meta: List[Tuple[float, float, str, Dict[str, str]]] = []
             for stream_idx, (resource, kwargs) in enumerate(video_specs):
                 s = float(kwargs.get("start", 0))
-                e = float(kwargs.get("end", _probe_video_duration(resource)))
+                e = self._resolve_video_end(resource, kwargs)
                 st = float(kwargs.get("step", 1))
                 c_dir = kwargs.get("cache_dir", self.cache_dir)
                 current_start = s + seg_i * st
                 current_end = min(current_start + st, e)
                 segment_meta.append((current_start, current_end, c_dir, kwargs))
 
-                # 评分时不强制 fps，使用原始片段（或模板中的 fps），避免缩放本身影响“变化量”判断；
-                # 若模板里 fps<=0，则视为未指定，交由底层自行决定。
+                # Do not force fps during scoring; use the original segment (or the fps in the template) so scaling itself does not affect the change-magnitude decision;
+                # If fps <= 0 in the template, treat it as unspecified and let the lower layer decide.
                 raw_fps_for_score = float(kwargs["fps"]) if kwargs.get("fps") else None
                 if raw_fps_for_score is not None and raw_fps_for_score <= 0:
                     raw_fps_for_score = None
@@ -540,13 +642,13 @@ class MLLMFlow:
             n_streams = len(video_specs)
             non_zero_scores = [s for s in scores if s > 0]
 
-            # 若所有路在该时间片段都无变化，则全部输出 Unchanged
+            # If no stream changes in this time segment, output Unchanged for all streams
             if not non_zero_scores:
                 for stream_idx in range(n_streams):
                     parts.append({"type": "text", "text": f"Stream {stream_idx + 1}: Unchanged\n"})
                 continue
 
-            # 若只有一路有变化：该路用满像素（2.0），其他路 Unchanged
+            # If only one stream changes, use full pixel scale (2.0) for that stream and Unchanged for the others
             if len(non_zero_scores) == 1:
                 changed_idx = scores.index(non_zero_scores[0])
                 for stream_idx in range(n_streams):
@@ -567,12 +669,12 @@ class MLLMFlow:
                         parts.append({"type": "text", "text": f"Stream {stream_idx + 1}: Unchanged\n"})
                 continue
 
-            # 至少两路有变化：将非零 score 线性映射到 [0.0, 2.0] 区间
+            # When at least two streams change, linearly map non-zero scores to the [0.0, 2.0] range
             min_non_zero = min(non_zero_scores)
             max_non_zero = max(non_zero_scores)
             scales: List[float] = []
             if max_non_zero == min_non_zero:
-                # 所有有变化的路变化量相同，则统一用 1.0
+                # If all changed streams have the same change magnitude, use 1.0 for all of them
                 scales = [1.0 if s > 0 else 0.0 for s in scores]
             else:
                 for s in scores:
@@ -621,7 +723,7 @@ class MLLMFlow:
         context_parts: List[Dict],
         request_id: str = "",
     ) -> Any:
-        """处理各种占位符"""
+        """Handle all placeholder types"""
         if tag_type == "var":
             return {"type": "text", "text": str(variables.get(resource, ""))}
 
@@ -646,12 +748,12 @@ class MLLMFlow:
 
         elif tag_type == "video":
             start = float(kwargs.get("start", 0))
-            end = float(kwargs.get("end", _probe_video_duration(resource)))
+            end = self._resolve_video_end(resource, kwargs)
             step = float(kwargs["step"]) if kwargs.get("step") else None
             fps = float(kwargs["fps"]) if kwargs.get("fps") else None
             cache_dir = kwargs.get("cache_dir", self.cache_dir)
 
-            # 如果指定了 step，将视频切分成多段
+            # If step is specified, split the video into multiple segments
             if step:
                 video_list = []
                 current_start = start
@@ -694,9 +796,9 @@ class MLLMFlow:
                     )
                     memory_text = self._build_memory_context(latest_user_text)
                     if memory_text:
-                        # 若首个 block 已是 system，则把 memory 合并进原 system 的文本区，
-                        # 避免出现两个 system 消息（Qwen3.5 等 chat template 会严格要求
-                        # "System message must be at the beginning." 只允许首位出现一次）。
+                        # If the first block is already system, merge memory into the original system text area,
+                        # avoiding two system messages (chat templates such as Qwen3.5 strictly require
+                        # "System message must be at the beginning." the system message to appear only once at the beginning).
                         if (
                             context_parts
                             and context_parts[0].get("type") == "role"
@@ -717,10 +819,15 @@ class MLLMFlow:
             return_flag = int(kwargs.pop("return", 1))
             request_id = kwargs.pop("request_id", request_id)
 
-            # 根据 multi_stream_mode 选择不同的 media limit 策略：
-            # - 默认：_apply_media_limit 按顺序保留最后 media_limit 个多媒体 token；
-            # - cdpruner 模式：使用 CDPruner 风格的基于指令与多样性的选择策略（对所有模型生效，包括 API 模型）；
-            # - surge 模式：使用 SURGE 风格的时间惊讶度策略对 video token 进行剪枝（仅作用于 video，image/audio 行为与默认策略一致）。
+            # Choose different media limit strategies based on multi_stream_mode:
+            # - default: _apply_media_limit keeps the last media_limit multimedia tokens in order;
+            # - cdpruner mode: use a CDPruner-style selection strategy based on instruction relevance and diversity (applies to all models, including API models);
+            # - surge mode: use a SURGE-style temporal surprise strategy to prune video tokens (only affects video; image/audio behavior matches the default strategy);
+            # - cdpruner_token / surge_token modes: client side does NOT prune.
+            #   The actual patch-level pruning runs inside the vLLM worker via
+            #   the xstream_vllm_pruner plugin; the client simply forwards the
+            #   instruction text via mm_processor_kwargs.
+            request_extra: Dict[str, Any] = {}
             if self.multi_stream_mode == "cdpruner":
                 instruction_text = "".join(
                     p.get("text", "")
@@ -737,6 +844,22 @@ class MLLMFlow:
                     local_context_parts,
                     media_limit,
                 )
+            elif self.multi_stream_mode in ("cdpruner_token", "surge_token"):
+                # Token-level pruning is only supported on local vLLM backends.
+                self._require_local_vllm_backend(model_name)
+                limited = _apply_media_limit(local_context_parts, media_limit)
+                if self.multi_stream_mode == "cdpruner_token":
+                    instruction_text = "".join(
+                        p.get("text", "")
+                        for p in local_context_parts
+                        if p.get("type") == "text"
+                    ).strip()
+                    request_extra["_xstream_pruner"] = {
+                        "algo": "cdpruner_token",
+                        "instruction": instruction_text,
+                    }
+                else:
+                    request_extra["_xstream_pruner"] = {"algo": "surge_token"}
             else:
                 limited = _apply_media_limit(local_context_parts, media_limit)
             limited = _merge_text_parts(limited)
@@ -747,7 +870,7 @@ class MLLMFlow:
             response = self.hub.call(
                 model_name=model_name,
                 messages=messages,
-                request_params={},
+                request_params=request_extra,
                 request_id=request_id
             )
             latency = time.time() - start_time

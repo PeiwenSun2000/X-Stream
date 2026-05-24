@@ -116,6 +116,8 @@ phase1_start_vllm() {
     FLOW_VIDEO_ROOT "${FLOW_VIDEO_ROOT:-}" \
     FLOW_PROMPT_ROOT "${FLOW_PROMPT_ROOT:-}" \
     FLOW_N_WORKERS "${FLOW_N_WORKERS:-}" \
+    FLOW_WARM_CACHE_ONLY "${FLOW_WARM_CACHE_ONLY:-false}" \
+    FLOW_CACHE_WARM_WORKERS "${FLOW_CACHE_WARM_WORKERS:-}" \
     FLOW_REPLACEMENT "${FLOW_REPLACEMENT:-}" \
     FLOW_CACHE_DIR "${FLOW_CACHE_DIR:-}"
 
@@ -227,6 +229,29 @@ start_vllm_service() {
     [ -n "${VLLM_KV_CACHE_DTYPE:-}" ]         && extra+=(--kv-cache-dtype "${VLLM_KV_CACHE_DTYPE}")
     [ -n "${VLLM_TOOL_CALL_PARSER:-}" ]       && extra+=(--enable-auto-tool-choice --tool-call-parser "${VLLM_TOOL_CALL_PARSER}")
 
+    # ------------------------------------------------------------------
+    # X-Stream patch-level pruner integration.
+    # When FLOW_MULTI_STREAM_MODE is cdpruner_token / surge_token, enable
+    # the xstream_vllm_pruner plugin inside vLLM workers (env var picked up
+    # by tools/vllm_cli.py) and turn on the EVS path via --video-pruning-rate
+    # so Qwen2.5-VL / Qwen3-VL actually invoke compute_retention_mask, which
+    # the plugin has monkey-patched.
+    # ------------------------------------------------------------------
+    case "${FLOW_MULTI_STREAM_MODE:-}" in
+      cdpruner_token|surge_token)
+        export XSTREAM_VLLM_PRUNER=1
+        if [ "${FLOW_MULTI_STREAM_MODE}" = "cdpruner_token" ]; then
+          export XSTREAM_VLLM_PRUNER_ALGO=cdpruner
+        else
+          export XSTREAM_VLLM_PRUNER_ALGO=surge
+        fi
+        export XSTREAM_VLLM_PRUNER_RHO="${XSTREAM_VLLM_PRUNER_RHO:-0.25}"
+        export XSTREAM_VLLM_PRUNER_KEEP_FIRST_FRAME="${XSTREAM_VLLM_PRUNER_KEEP_FIRST_FRAME:-1}"
+        extra+=(--video-pruning-rate "${XSTREAM_VLLM_PRUNER_RHO}")
+        echo "xstream_vllm_pruner: enabled (algo=${XSTREAM_VLLM_PRUNER_ALGO}, rho=${XSTREAM_VLLM_PRUNER_RHO})"
+        ;;
+    esac
+
     python3 "${TOOLS_DIR}/vllm_cli.py" serve "${serve_target}" \
       --trust-remote-code --host 0.0.0.0 --port "${PORT}" --dtype bfloat16 \
       --tensor-parallel-size "${VLLM_TENSOR_PARALLEL_SIZE}" \
@@ -258,6 +283,10 @@ phase2_run_flow() {
     --multi-stream-mode "${FLOW_MULTI_STREAM_MODE:-pixel}"
   )
   [ -n "${FLOW_IMAGE_ROOT:-}" ] && args+=(--image-root "${FLOW_IMAGE_ROOT}")
+  if [ "${FLOW_WARM_CACHE_ONLY:-false}" = "true" ]; then
+    args+=(--warm-cache-only)
+    [ -n "${FLOW_CACHE_WARM_WORKERS:-}" ] && args+=(--cache-warm-workers "${FLOW_CACHE_WARM_WORKERS}")
+  fi
   if [ "${CONTINUE_RESUMING:-}" = "1" ] || [ "${MLLMFLOW_RESUME:-false}" = "true" ]; then
     args+=(--resume)
   fi
@@ -270,6 +299,11 @@ phase2_run_flow() {
   if [ "${rc}" -ne 0 ]; then
     echo "mllmflow exited with code ${rc}; skipping stream-eval and vLLM teardown so logs stay reachable." >&2
     return "${rc}"
+  fi
+
+  if [ "${FLOW_WARM_CACHE_ONLY:-false}" = "true" ]; then
+    echo "FLOW_WARM_CACHE_ONLY=true: skipping stream-eval and vLLM teardown."
+    return 0
   fi
 
   if [ "${ENABLE_STREAM_EVAL:-true}" = "true" ]; then

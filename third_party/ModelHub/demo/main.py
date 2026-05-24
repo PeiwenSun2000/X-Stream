@@ -2,7 +2,7 @@ from model_hub import ModelHub
 
 hub = ModelHub("models.json")
 
-# 测试模型列表
+# Test model list
 models = [
     # "gemini-3-pro-preview",
     # "qwen3-235b-a22b-instruct-2507",
@@ -13,12 +13,12 @@ models = [
     # "echo"
 ]
 
-# 测试图片和视频
-image_path = "land.png"  # 替换为实际图片路径
-video_path = "land.mp4"  # 替换为实际视频路径
+# Test images and videos
+image_path = "land.png"  # Replace with the actual image path
+video_path = "land.mp4"  # Replace with the actual video path
 
-# 测试消息
-text = "星際穿越風格，電影級畫面，巨大黑洞，一輛支離破碎的復古列車從黑洞視界線衝出，極強視覺衝擊力，末日廢土風，動態模糊，誇張的廣角透視，強引力，吞噬感。OC渲染，光線追踪，景深，超現實主義，深藍色調，豐富的色彩層次，真實材質質感，暗黑系背景光影，耀光，反射，极致光影效果。"
+# Test message
+text = "Interstellar style, cinematic visuals, a massive black hole, a shattered vintage train bursting out from the black hole event horizon, extremely strong visual impact, post-apocalyptic wasteland style, motion blur, exaggerated wide-angle perspective, intense gravity, a sense of being swallowed. OC rendering, ray tracing, depth of field, surrealism, deep blue tones, rich color layering, realistic material texture, dark background lighting and shadows, lens flare, reflections, and ultimate light-and-shadow effects."
 messages = [
     {
         "role": "user",
@@ -26,10 +26,10 @@ messages = [
     }
 ]
 
-# 测试每个模型
+# Test each model
 for model_name in models:
     print(f"\n{'='*50}")
-    print(f"测试模型: {model_name}")
+    print(f"Testing model: {model_name}")
     print(f"{'='*50}")
 
     response = hub.call(
@@ -41,7 +41,7 @@ for model_name in models:
     print(response)
 
     # if "error" in response:
-    #     print(f"错误: {response['error']}")
+    #     print(f"Error: {response['error']}")
     # else:
-    #     print(f"内容: {response['content'][:200]}...")
-    #     print(f"Token使用: {response['usage']}")
+    #     print(f"content: {response['content'][:200]}...")
+    #     print(f"TokenUsage: {response['usage']}")

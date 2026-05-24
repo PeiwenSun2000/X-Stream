@@ -1,6 +1,7 @@
 import os
 import hashlib
 import copy
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -48,7 +49,7 @@ def _construct_conversation(parts: List[Dict]) -> List[Dict]:
 def _apply_media_limit(parts: List[Dict], media_limit: int) -> List[Dict]:
     media_types = {"image", "video", "audio"}
 
-    # 允许通过环境变量全局丢弃 audio，供上游脚本控制
+    # Allow audio to be globally dropped through an environment variable for upstream scripts
     drop_audio = os.environ.get("FLOW_DROP_AUDIO", "false").lower() in {
         "1",
         "true",
@@ -57,12 +58,12 @@ def _apply_media_limit(parts: List[Dict], media_limit: int) -> List[Dict]:
     }
 
     if drop_audio:
-        # 将所有 audio 类型直接替换为空文本，从而不向模型发送音频内容
+        # Replace all audio items with empty text so audio content is not sent to the model
         parts = [
             {"type": "text", "text": ""} if p.get("type") == "audio" else p
             for p in parts
         ]
-        # audio 已经被清空，这里只对 image / video 做数量限制
+        # Audio has already been cleared, so only image/video count limits are applied here
         media_types = {"image", "video"}
 
     media_indices = [i for i, p in enumerate(parts) if p.get("type") in media_types]
@@ -80,7 +81,7 @@ def _apply_media_limit(parts: List[Dict], media_limit: int) -> List[Dict]:
     ]
 
 
-# ---- CDPruner 风格的 media limit 实现 ----
+# ---- CDPruner-style media limit implementation ----
 _CDPRUNER_CLIP_MODEL = "openai/clip-vit-large-patch14-336"
 _cdpruner_initialized = False
 _cdpruner_device = None
@@ -91,9 +92,9 @@ _cdpruner_text_model = None
 
 
 def _init_cdpruner_clip():
-    """惰性初始化 CLIP 模型与 tokenizer，供 CDPruner 风格的筛选使用。
+    """Lazily initialize the CLIP model and tokenizer for CDPruner-style filtering.
 
-    若依赖（torch/transformers/PIL）缺失或模型加载失败，将抛出异常，由上层回退到默认逻辑。
+    If dependencies (torch/transformers/PIL) are missing or model loading fails, raise an exception so the caller can fall back to the default logic.
     """
     global _cdpruner_initialized
     global _cdpruner_device
@@ -106,7 +107,7 @@ def _init_cdpruner_clip():
         return
 
     import torch  # type: ignore
-    # 直接从子模块导入，避免部分 transformers 版本顶部 __all__ 未导出 CLIP* 导致 import 失败
+    # Import directly from submodules to avoid import failures when some transformers versions do not export CLIP* from top-level __all__
     from transformers.models.clip import (  # type: ignore
         CLIPImageProcessor,
         CLIPVisionModelWithProjection,
@@ -115,7 +116,7 @@ def _init_cdpruner_clip():
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # 避免 from_pretrained 使用 meta 占位导致 .to(device) 报错，强制在 CPU 上加载真实权重再迁移
+    # Avoid .to(device) failures caused by from_pretrained using meta placeholders by forcing real weights to load on CPU before moving them
     load_kw = {"device_map": None, "low_cpu_mem_usage": False}
 
     image_processor = CLIPImageProcessor.from_pretrained(_CDPRUNER_CLIP_MODEL)
@@ -145,14 +146,14 @@ def _apply_media_limit_cdpruner(
     media_limit: int,
     instruction_text: str = "",
 ) -> List[Dict]:
-    """使用 CDPruner 思想在 image/video token 数量超过 media_limit 时进行筛选。
+    """Use CDPruner-inspired filtering when the number of image/video tokens exceeds media_limit.
 
-    - 利用 CLIP 抽取每个多媒体 token 的视觉与文本嵌入；
-    - 构造基于指令相关性的核矩阵；
-    - 采用 DPP 风格的贪心 MAP 推断选择子集；
-    - 仅对 image/video 生效，audio 仍按环境变量 FLOW_DROP_AUDIO 控制是否整体丢弃。
+    - Use CLIP to extract visual and text embeddings for each multimedia token;
+    - Build a kernel matrix based on instruction relevance;
+    - Use DPP-style greedy MAP inference to select a subset;
+    - Only applies to image/video; audio is still controlled globally by the FLOW_DROP_AUDIO environment variable.
 
-    依赖：torch、transformers、PIL，若任一缺失则自动回退到 _apply_media_limit。
+    Dependencies: torch, transformers, and PIL. If any is missing, automatically fall back to _apply_media_limit.
     """
     media_types = {"image", "video", "audio"}
 
@@ -172,7 +173,7 @@ def _apply_media_limit_cdpruner(
 
     media_indices = [i for i, p in enumerate(parts) if p.get("type") in media_types]
 
-    # 媒体为 0 或限制为 0：全部丢弃（此时无需进入 CDPruner 逻辑）
+    # No media or a zero limit: drop everything (no need to enter CDPruner logic)
     if media_limit <= 0 or not media_indices:
         keep_set = set()
         return [
@@ -186,7 +187,7 @@ def _apply_media_limit_cdpruner(
         import torch  # type: ignore
         from PIL import Image  # type: ignore
     except Exception as e:
-        # 环境缺少依赖：退化到简单的尾部截断策略
+        # Missing runtime dependencies: fall back to simple tail truncation
         print(
             f"[CDPruner] Missing torch/PIL, fallback to _apply_media_limit. Error: {e}",
             flush=True,
@@ -196,7 +197,7 @@ def _apply_media_limit_cdpruner(
     try:
         _init_cdpruner_clip()
     except Exception as e:
-        # CLIP 模型加载失败时，同样退化
+        # Also fall back when CLIP model loading fails
         print(
             f"[CDPruner] Failed to init CLIP model, fallback to _apply_media_limit. Error: {e}",
             flush=True,
@@ -211,7 +212,7 @@ def _apply_media_limit_cdpruner(
 
     device = _cdpruner_device
 
-    # 将每个 media token 映射为 1 张代表帧的图像（image 直接使用原图，video 截取中间帧）
+    # Map each media token to one representative frame image (use the original image for image tokens and the middle frame for video tokens)
     from mllmflow.video_utils.extract_frame import (  # type: ignore
         extract_frame_ffmpeg,
     )
@@ -260,7 +261,7 @@ def _apply_media_limit_cdpruner(
         images.append(img)
         valid_media_indices.append(idx)
 
-    # 如果所有媒体都无法成功解析为图像，则退化为默认策略
+    # If no media can be converted to images, fall back to the default strategy
     if not images:
         print(
             "[CDPruner] No media could be converted to images, fallback to _apply_media_limit.",
@@ -270,13 +271,13 @@ def _apply_media_limit_cdpruner(
 
     N = len(images)
     if N <= 1:
-        # 只有 0/1 个媒体时，无意义进行剪枝，直接按默认策略处理
+        # When there are only 0/1 media items, pruning is not useful; use the default strategy directly
         return _apply_media_limit(parts, media_limit)
 
-    # 通过环境变量控制 CDPruner 模式下的保留比例（相对于当前媒体总数 N）：
-    # - FLOW_CDPRUNER_KEEP_RATIO ∈ (0, 1]：大致保留 ratio * N 个媒体（再受 media_limit 约束）；
-    # - ratio<=0：退化为全部丢弃；
-    # - ratio>1：按 1.0 处理（即不额外按比例裁剪，只受 media_limit 约束）。
+    # Control the keep ratio in CDPruner mode through an environment variable (relative to the current total media count N):
+    # - FLOW_CDPRUNER_KEEP_RATIO ∈ (0, 1]：roughly keep ratio * N media items (also constrained by media_limit);
+    # - ratio<=0：fall back to dropping everything;
+    # - ratio>1：treat as 1.0 (no additional ratio-based trimming, only constrained by media_limit).
     ratio_env = os.environ.get("FLOW_CDPRUNER_KEEP_RATIO", "").strip()
     try:
         keep_ratio = float(ratio_env) if ratio_env else 0.5
@@ -284,27 +285,27 @@ def _apply_media_limit_cdpruner(
         keep_ratio = 0.5
     keep_ratio = max(0.0, min(1.0, keep_ratio))
 
-    # 正常情况下 media_limit<=0 已在上面处理（直接全部丢弃），这里假设 media_limit>0
+    # Normally media_limit <= 0 has already been handled above (drop everything), so assume media_limit > 0 here
     if keep_ratio <= 0.0:
         effective_limit = 0
     elif keep_ratio >= 1.0:
-        # 不按比例额外裁剪，仅受 media_limit 约束
+        # Do not additionally trim by ratio; only constrain by media_limit
         effective_limit = min(media_limit, N)
     else:
-        # 按比例估算要保留的数量，并与 media_limit/N 双重约束；至少保留 1 个
+        # Estimate the number to keep by ratio and constrain it by both media_limit and N; keep at least 1
         effective_limit = int(N * keep_ratio)
         if effective_limit < 1:
             effective_limit = 1
         effective_limit = min(effective_limit, media_limit, N)
 
-    # 使用 CLIP 抽特征
+    # Use CLIP to extract features
     pixel_values = _cdpruner_image_processor(images=images, return_tensors="pt")[
         "pixel_values"
     ].to(device)
 
     with torch.no_grad():
         vision_out = _cdpruner_vision_model(pixel_values)
-        # 优先使用 image_embeds，否则退回到 CLS token
+        # Prefer image_embeds; otherwise fall back to the CLS token
         if hasattr(vision_out, "image_embeds") and vision_out.image_embeds is not None:
             image_embeds = vision_out.image_embeds  # (N, D)
         else:
@@ -329,27 +330,27 @@ def _apply_media_limit_cdpruner(
             last_hidden_t = text_out.last_hidden_state  # type: ignore[attr-defined]
             text_embeds = last_hidden_t[:, 0, :]
 
-    # ---- 按照 CDPruner 核心思想构造核矩阵并进行 DPP 贪心选择 ----
+    # ---- Build the kernel matrix and perform DPP greedy selection following the core CDPruner idea ----
     N, D = image_embeds.shape
 
-    # 归一化
+    # Normalize
     img_norm = image_embeds / (image_embeds.norm(dim=-1, keepdim=True) + 1e-6)
     txt_norm = text_embeds / (text_embeds.norm(dim=-1, keepdim=True) + 1e-6)
 
-    # 图像间相似度
+    # Inter-image similarity
     similarity = torch.matmul(img_norm, img_norm.t())  # (N, N)
 
-    # 指令相关性（参照 CDPruner，将余弦相似度取负并归一化）
+    # Instruction relevance (following CDPruner, negate cosine similarity and normalize it)
     relevance = torch.matmul(img_norm, txt_norm.t()).squeeze(-1)  # (N,)
     relevance = -relevance
     relevance = (relevance - relevance.min() + 1e-6) / (
         relevance.max() - relevance.min() + 1e-6
     )
 
-    # 条件 DPP 的核矩阵
+    # Conditional DPP kernel matrix
     kernel = relevance.unsqueeze(1) * similarity * relevance.unsqueeze(0)  # (N, N)
 
-    # Fast MAP inference（B=1 的特例，简化自原始 CDPruner 实现）
+    # Fast MAP inference（B=1 special case, simplified from the original CDPruner implementation）
     di2s = torch.diagonal(kernel, dim1=0, dim2=1).clone()  # (N,)
     cis = torch.zeros((effective_limit, N), device=kernel.device)  # (T, N)
     select_idx = torch.empty((effective_limit,), dtype=torch.long, device=kernel.device)
@@ -367,7 +368,7 @@ def _apply_media_limit_cdpruner(
         di2s -= ei * ei
         di2s[j] = -float("inf")
 
-    # 去重并排序，映射回原来的 media 索引
+    # Deduplicate and sort, then map back to the original media indices
     unique_idx = torch.unique(select_idx.cpu())
     if unique_idx.numel() > effective_limit:
         unique_idx = unique_idx[:effective_limit]
@@ -390,11 +391,11 @@ def _compute_surge_temporal(
     epsilon: float = 1e-8,
     enable_variance_norm: bool = True,
 ):
-    """简化版 SURGE：只在时间维度上建模惊讶度，假设每个 token 对应一个时间步的全局特征。
+    """Simplified SURGE: model surprise only along the temporal dimension, assuming each token corresponds to global features at one time step.
 
-    该实现遵循官方 SURGE `compute_surge` 的核心思路：
-    - 使用两帧差分建模短期趋势，并进行方差归一化；
-    - 使用分位数阈值控制保留比例（rho）。
+    This implementation follows the core idea of the official SURGE `compute_surge`: 
+    - Use two-frame differences to model short-term trends and apply variance normalization;
+    - Use a quantile threshold to control the keep ratio (rho).
     """
     import torch  # type: ignore
 
@@ -442,7 +443,7 @@ def _compute_surge_temporal(
     else:
         keep_mask = torch.ones_like(scores, dtype=torch.bool)
 
-    # 平滑惊讶度曲线（便于诊断；当前选择逻辑只依赖原始 scores）
+    # Smooth the surprise curve for diagnostics; the current selection logic only depends on the raw scores
     if T > 1:
         smoothed = torch.zeros_like(scores)
         smoothed[0] = scores[0]
@@ -455,14 +456,14 @@ def _apply_media_limit_surge(
     parts: List[Dict],
     media_limit: int,
 ) -> List[Dict]:
-    """SURGE 风格的 video token 削减。
+    """SURGE-style video token reduction.
 
-    实现要点：
-    - 仅对 `type=="video"` 的多媒体 token 生效，image/audio 行为与默认策略一致；
-    - 对同一路视频（相同文件路径）的多个切片，抽取代表帧并用 CLIP 得到时间序列特征；
-    - 在每路视频内部按时间顺序应用简化版 SURGE，得到需要保留的时间步；
-    - 若整体保留数仍超过 media_limit，则退化为“保留最后 media_limit 个 video token”；
-    - 被丢弃的视频 token 用空文本占位，从而不再向下游模型发送该片段。
+    Key implementation points:
+    - Only applies to multimedia tokens with `type=="video"`; image/audio behavior matches the default strategy;
+    - For multiple clips from the same video path, extract representative frames and use CLIP to obtain temporal sequence features;
+    - Apply the simplified SURGE algorithm in chronological order within each video stream to obtain time steps to keep;
+    - If the total retained count still exceeds media_limit, fall back to keeping the last media_limit video tokens;
+    - Replace dropped video tokens with empty text so those clips are no longer sent to downstream models.
     """
     media_types = {"image", "video", "audio"}
 
@@ -480,7 +481,7 @@ def _apply_media_limit_surge(
         ]
         media_types = {"image", "video"}
 
-    # 仅对 video token 做 SURGE，其他 media 沿用数量限制策略
+    # Apply SURGE only to video tokens; other media keeps the count-limit strategy
     video_indices = [i for i, p in enumerate(parts) if p.get("type") == "video"]
 
     if media_limit <= 0 or not video_indices:
@@ -523,7 +524,7 @@ def _apply_media_limit_surge(
 
     cache_dir = os.environ.get("FLOW_CACHE_DIR", "media_dir")
 
-    # 1) 为每个 video token 抽取一帧图像，并计算 CLIP 特征
+    # 1) Extract one frame image for each video token and compute CLIP features
     frame_images: List["Image.Image"] = []
     frame_meta: List[Tuple[int, str]] = []  # (global_index, video_path)
 
@@ -577,7 +578,7 @@ def _apply_media_limit_surge(
             last_hidden = vision_out.last_hidden_state  # type: ignore[attr-defined]
             frame_embeds = last_hidden[:, 0, :]  # (N, D)
 
-    # 2) 按视频路径分组，内部按出现顺序形成时间序列，并应用 SURGE
+    # 2) Group by video path, form temporal sequences by occurrence order within each group, and apply SURGE
     rho_env = os.environ.get("FLOW_SURGE_RHO", "").strip()
     try:
         surge_rho = float(rho_env) if rho_env else 0.25
@@ -603,7 +604,7 @@ def _apply_media_limit_surge(
                 keep_video_indices.append(global_idx)
 
     if not keep_video_indices:
-        # 所有帧都被判为低惊讶度时，至少保留最后一个 video token，避免彻底丢失视频
+        # When all frames are judged low-surprise, keep at least the last video token to avoid losing the video entirely
         keep_video_indices = [video_indices[-1]]
 
     keep_video_indices = sorted(set(keep_video_indices))
@@ -624,8 +625,8 @@ def _probe_video_duration(video_path: str) -> int:
     info = probe_video(video_path)
     if info is None:
         raise RuntimeError(
-            f"无法探测视频时长（ffprobe 失败，probe 返回空）: {video_path!s} — "
-            "请确认文件存在、为有效视频，且本机可执行 `ffprobe`（随 ffmpeg 安装）。"
+            f"Unable to probe video duration (ffprobe failed and probe returned empty): {video_path!s} — "
+            "Please confirm the file exists, is a valid video, and `ffprobe` is available locally (installed with ffmpeg)."
         )
     d = info.get("duration")
     if d is None:
@@ -664,12 +665,38 @@ def _trim_video_cached(
     if output.exists():
         return str(output.resolve())
 
-    trim_video(
-        video_path=video_path,
-        trim_path=str(output),
-        start_time=seconds_to_time(start),
-        end_time=seconds_to_time(end),
-        temp_dir=str(Path(cache_dir) / "moviepy_tmp"),
-        fps=fps,
-    )
+    lock_dir = output.with_suffix(output.suffix + ".lock")
+    while True:
+        if output.exists():
+            return str(output.resolve())
+        try:
+            lock_dir.mkdir()
+            break
+        except FileExistsError:
+            # A previous killed prewarm may leave a stale lock behind.
+            try:
+                if time.time() - lock_dir.stat().st_mtime > 6 * 60 * 60:
+                    lock_dir.rmdir()
+                    continue
+            except FileNotFoundError:
+                continue
+            except OSError:
+                pass
+            time.sleep(0.2)
+
+    try:
+        if not output.exists():
+            trim_video(
+                video_path=video_path,
+                trim_path=str(output),
+                start_time=seconds_to_time(start),
+                end_time=seconds_to_time(end),
+                temp_dir=str(Path(cache_dir) / "moviepy_tmp"),
+                fps=fps,
+            )
+    finally:
+        try:
+            lock_dir.rmdir()
+        except OSError:
+            pass
     return str(output.resolve())

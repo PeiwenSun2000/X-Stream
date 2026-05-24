@@ -6,7 +6,7 @@ Analyze the input response and output STRICT JSON: {"label": "yes"} if it is a n
 ## CRITERIA FOR "yes" (non-substantive acknowledgment)
 ✓ Contains ONLY:
   - Empty strings, placeholders ("<SILENT>", "<NO_INFORMATION>")
-  - Single-word affirmations ("ok", "okay", "sure", "yes", "got it", "收到", "好的")
+  - Single-word affirmations ("ok", "okay", "sure", "yes", "got it", "received", "okay")
   - Vague promises deferring action ("I'll remind you later", "I'll let you know then")
   - Polite acknowledgments without content ("Understood", "Noted", "Alright")
 ✓ Avoids addressing the actual question/request
@@ -24,12 +24,12 @@ Analyze the input response and output STRICT JSON: {"label": "yes"} if it is a n
 ## EXAMPLES
 Input: "ok" → {"label": "yes"}
 Input: "I'll remind you tomorrow" → {"label": "yes"}
-Input: "收到，到时候提醒你" → {"label": "yes"}
+Input: "Received, I will remind you then" → {"label": "yes"}
 Input: "<SILENT>" → {"label": "yes"}
 Input: "The capital of France is Paris" → {"label": "no"}
 Input: "Error 404 means page not found. Try checking the URL." → {"label": "no"}
 Input: "Yes, the meeting is at 3 PM in Conference Room B" → {"label": "no"}
-Input: "好的，会议在下午三点" → {"label": "no"}
+Input: "Okay, the meeting is at 3 PM" → {"label": "no"}
 Input: "{\"app_name\": \"HHR Train\"}" → {"label": "no"}
 
 ## INSTRUCTIONS

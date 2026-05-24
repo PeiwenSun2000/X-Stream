@@ -3,8 +3,8 @@ import os
 
 def extract_frame_ffmpeg(video_path: str, output_path: str, time_sec: float) -> bool:
     """
-    从视频第 time_sec 秒提取一帧，保存为 output_path。
-    成功返回 True，失败返回 False。
+    Extract one frame at time_sec seconds from the video and save it to output_path.
+    Return True on success and False on failure.
     """
     if not os.path.exists(video_path):
         return False
@@ -19,17 +19,17 @@ def extract_frame_ffmpeg(video_path: str, output_path: str, time_sec: float) -> 
         output_path
     ]
     try:
-        # 检查返回码，不抛出异常
+        # Check the return code without raising exceptions
         result = subprocess.run(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            check=False  # 关键：不自动抛异常
+            check=False  # Important: do not raise exceptions automatically
         )
         return result.returncode == 0
     except Exception:
         return False
 
 if __name__=="__main__":
-    # 使用示例
-    print(extract_frame_ffmpeg("land.mp4", "land.jpg", 3.0))  # 提取第 10.5 秒
+    # Usage example
+    print(extract_frame_ffmpeg("land.mp4", "land.jpg", 3.0))  # Extract frame at 10.5 seconds

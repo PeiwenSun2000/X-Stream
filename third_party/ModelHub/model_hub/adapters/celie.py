@@ -34,7 +34,7 @@ class Celie(ModelClient):
                     new_content.append({"type": "text", "text": text})
 
             if new_content and role == "user":
-                # 多个连续 video 时拆成多对 user / assistant <|silent|>，最后一组 <v>+<text> 后不插 assistant
+                # When there are multiple consecutive videos, split them into multiple user / assistant <|silent|> pairs; do not insert an assistant after the final <v>+<text> group
                 segments = []
                 for item in new_content:
                     if item.get("type") == "video_url":
@@ -77,12 +77,12 @@ class Celie(ModelClient):
             "model": self.model_name,
             "messages": messages
         }
-        # 直接添加所有 request_params 到 payload
+        # Add all request_params directly to the payload
         for k, v in request_params.items():
             if k not in ("model", "messages"):
                 payload[k] = v
 
-        # 构建请求头：使用 Authorization Bearer
+        # Build request headers using Authorization Bearer
         headers = {}
         if self.api_key and "{api_key}" not in self.endpoint:
             headers["Authorization"] = f"Bearer {self.api_key}"

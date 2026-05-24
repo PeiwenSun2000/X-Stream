@@ -22,7 +22,7 @@ Usage: bash run.sh [options]
 
 Required:
   --model NAME              Logical model name in configs/models.json
-                            (must match a top-level key)
+                            (must match a top-level key; optional with --warm-cache-only)
   --input JSONL             Input task list (one JSON object per line)
 
 Run identity / output:
@@ -47,17 +47,23 @@ Resume:
   --resume                  Reuse the newest matching incomplete RUN_DIR
 
 Multi-stream / token reduction:
-  --multi-stream MODE       pixel | time | code | code_adaptive | cdpruner | surge
+  --multi-stream MODE       pixel | time | code | code_adaptive
+                            | cdpruner | surge
+                            | cdpruner_token | surge_token
                             (default: pixel)
   --surge-rho FLOAT         FLOW_SURGE_RHO for --multi-stream surge (default: 0.75)
   --cdpruner-keep-ratio F   FLOW_CDPRUNER_KEEP_RATIO for --multi-stream cdpruner
                             (default: 0.5)
+  --xstream-rho FLOAT       Patch-level pruning rate for cdpruner_token / surge_token
+                            (default: 0.25, range [0,1); local vLLM only)
 
 Inputs / IO:
   --prompt-root DIR         Root for {{file:...}} system prompts
   --video-root DIR          Root for {{video:...}} resources
   --image-root DIR          Root for {{image:...}} resources
   --cache-dir DIR           Decoded-frame / segment cache (default: ./cache)
+  --warm-cache-only         Pre-generate video segment cache and exit (no vLLM/model calls)
+  --cache-warm-workers N    Worker count for --warm-cache-only (default: --workers)
   --drop-audio              Drop all audio inputs inside mllmflow
   --api-timeout SECS        Per-request timeout (default: 600)
 
@@ -78,6 +84,7 @@ ARG_INPUT=""
 ARG_RUN_ID="${RUN_ID:-demo}"
 ARG_OUTPUT_DIR="${FLOW_OUTPUT_DIR:-${SCRIPT_DIR}/outputs}"
 ARG_CONFIG="${FLOW_CONFIG:-${SCRIPT_DIR}/configs/models.json}"
+ARG_CONFIG_EXPLICIT=0
 ARG_WORKERS="${FLOW_N_WORKERS:-4}"
 ARG_TP="${VLLM_TENSOR_PARALLEL_SIZE:-2}"
 ARG_VLLM_MODEL_PATH="${VLLM_MODEL_PATH:-${SCRIPT_DIR}/checkpoints}"
@@ -88,10 +95,13 @@ ARG_RESUME=0
 ARG_MULTI_STREAM="${FLOW_MULTI_STREAM_MODE:-pixel}"
 ARG_SURGE_RHO="${FLOW_SURGE_RHO:-0.75}"
 ARG_CDPRUNER_RATIO="${FLOW_CDPRUNER_KEEP_RATIO:-0.5}"
+ARG_XSTREAM_RHO="${XSTREAM_VLLM_PRUNER_RHO:-0.25}"
 ARG_PROMPT_ROOT="${FLOW_PROMPT_ROOT:-}"
 ARG_VIDEO_ROOT="${FLOW_VIDEO_ROOT:-}"
 ARG_IMAGE_ROOT="${FLOW_IMAGE_ROOT:-}"
 ARG_CACHE_DIR="${FLOW_CACHE_DIR:-${SCRIPT_DIR}/cache}"
+ARG_WARM_CACHE_ONLY=0
+ARG_CACHE_WARM_WORKERS="${FLOW_CACHE_WARM_WORKERS:-}"
 ARG_DROP_AUDIO="${FLOW_DROP_AUDIO:-False}"
 ARG_API_TIMEOUT="${FLOW_API_TIMEOUT:-600}"
 ARG_STREAM_EVAL="${ENABLE_STREAM_EVAL:-true}"
@@ -106,7 +116,7 @@ while [ $# -gt 0 ]; do
     --input)              ARG_INPUT="$2"; shift 2 ;;
     --run-id)             ARG_RUN_ID="$2"; shift 2 ;;
     --output-dir)         ARG_OUTPUT_DIR="$2"; shift 2 ;;
-    --config)             ARG_CONFIG="$2"; shift 2 ;;
+    --config)             ARG_CONFIG="$2"; ARG_CONFIG_EXPLICIT=1; shift 2 ;;
     --workers)            ARG_WORKERS="$2"; shift 2 ;;
     --tp)                 ARG_TP="$2"; shift 2 ;;
     --vllm-model-path)    ARG_VLLM_MODEL_PATH="$2"; shift 2 ;;
@@ -119,10 +129,13 @@ while [ $# -gt 0 ]; do
     --multi-stream)       ARG_MULTI_STREAM="$2"; shift 2 ;;
     --surge-rho)          ARG_SURGE_RHO="$2"; shift 2 ;;
     --cdpruner-keep-ratio) ARG_CDPRUNER_RATIO="$2"; shift 2 ;;
+    --xstream-rho)        ARG_XSTREAM_RHO="$2"; shift 2 ;;
     --prompt-root)        ARG_PROMPT_ROOT="$2"; shift 2 ;;
     --video-root)         ARG_VIDEO_ROOT="$2"; shift 2 ;;
     --image-root)         ARG_IMAGE_ROOT="$2"; shift 2 ;;
     --cache-dir)          ARG_CACHE_DIR="$2"; shift 2 ;;
+    --warm-cache-only)    ARG_WARM_CACHE_ONLY=1; shift ;;
+    --cache-warm-workers) ARG_CACHE_WARM_WORKERS="$2"; shift 2 ;;
     --drop-audio)         ARG_DROP_AUDIO="True"; shift ;;
     --api-timeout)        ARG_API_TIMEOUT="$2"; shift 2 ;;
     --stream-eval)        ARG_STREAM_EVAL="true"; shift ;;
@@ -135,10 +148,17 @@ done
 
 # ----------------------------------------------------------------------------
 # Validation
-[ -z "${ARG_MODEL}" ] && { echo "Error: --model is required" >&2; exit 1; }
 [ -z "${ARG_INPUT}" ] && { echo "Error: --input is required" >&2; exit 1; }
 [ -f "${ARG_INPUT}" ] || { echo "Error: --input not found: ${ARG_INPUT}" >&2; exit 1; }
 [ -f "${ARG_CONFIG}" ] || { echo "Error: --config not found: ${ARG_CONFIG}" >&2; exit 1; }
+if [ -z "${ARG_MODEL}" ]; then
+  if [ "${ARG_WARM_CACHE_ONLY}" -eq 1 ]; then
+    ARG_MODEL="__warm_cache_only__"
+  else
+    echo "Error: --model is required" >&2
+    exit 1
+  fi
+fi
 
 # pipeline.sh cd's into RUN_DIR before launching mllmflow, so all path-like
 # arguments must be absolute.
@@ -154,7 +174,15 @@ ARG_CACHE_DIR="$(abspath "${ARG_CACHE_DIR}")"
 
 case "${ARG_MULTI_STREAM}" in
   pixel|time|code|code_adaptive|cdpruner|surge) ;;
-  *) echo "Error: --multi-stream must be one of pixel,time,code,code_adaptive,cdpruner,surge" >&2; exit 1 ;;
+  cdpruner_token|surge_token)
+    # Token-level patch pruning requires a local vLLM worker so the
+    # xstream_vllm_pruner plugin can install itself.
+    if [ "${ARG_NO_VLLM}" -eq 1 ] && [ "${ARG_WARM_CACHE_ONLY}" -ne 1 ]; then
+      echo "Error: --multi-stream ${ARG_MULTI_STREAM} requires a local vLLM backend; remove --no-vllm." >&2
+      exit 1
+    fi
+    ;;
+  *) echo "Error: --multi-stream must be one of pixel,time,code,code_adaptive,cdpruner,surge,cdpruner_token,surge_token" >&2; exit 1 ;;
 esac
 
 # ----------------------------------------------------------------------------
@@ -203,16 +231,29 @@ export VLLM_GPU_MEMORY_UTILIZATION="${ARG_GPU_MEM_UTIL}"
 export FLOW_MULTI_STREAM_MODE="${ARG_MULTI_STREAM}"
 export FLOW_SURGE_RHO="${ARG_SURGE_RHO}"
 export FLOW_CDPRUNER_KEEP_RATIO="${ARG_CDPRUNER_RATIO}"
+export XSTREAM_VLLM_PRUNER_RHO="${ARG_XSTREAM_RHO}"
 export FLOW_PROMPT_ROOT="${ARG_PROMPT_ROOT}"
 export FLOW_VIDEO_ROOT="${ARG_VIDEO_ROOT}"
 export FLOW_IMAGE_ROOT="${ARG_IMAGE_ROOT}"
 export FLOW_CACHE_DIR="${ARG_CACHE_DIR}"
+if [ "${ARG_WARM_CACHE_ONLY}" -eq 1 ]; then
+  export FLOW_WARM_CACHE_ONLY="true"
+  export ENABLE_STREAM_EVAL="false"
+  export ENABLE_VLLM_SERVICES="false"
+else
+  export FLOW_WARM_CACHE_ONLY="${FLOW_WARM_CACHE_ONLY:-false}"
+fi
+[ -n "${ARG_CACHE_WARM_WORKERS}" ] && export FLOW_CACHE_WARM_WORKERS="${ARG_CACHE_WARM_WORKERS}"
 export FLOW_DROP_AUDIO="${ARG_DROP_AUDIO}"
 export FLOW_API_TIMEOUT="${ARG_API_TIMEOUT}"
 export FLOW_REPLACEMENT="MODEL>${ARG_MODEL}"
-export ENABLE_STREAM_EVAL="${ARG_STREAM_EVAL}"
+if [ "${ARG_WARM_CACHE_ONLY}" -ne 1 ]; then
+  export ENABLE_STREAM_EVAL="${ARG_STREAM_EVAL}"
+fi
 export STREAM_EVAL_JUDGER="${ARG_STREAM_EVAL_JUDGER}"
-if [ "${ARG_NO_VLLM}" -eq 1 ]; then
+if [ "${ARG_WARM_CACHE_ONLY}" -eq 1 ]; then
+  export ENABLE_VLLM_SERVICES="false"
+elif [ "${ARG_NO_VLLM}" -eq 1 ]; then
   export ENABLE_VLLM_SERVICES="false"
 else
   export ENABLE_VLLM_SERVICES="${ENABLE_VLLM_SERVICES:-true}"
@@ -241,10 +282,14 @@ cleanup_vllm_between_rounds() {
 RUN_ID_BASE="${RUN_ID}"
 PREV_RUN_DIR=""
 FLOW_CONFIG_INITIAL="${FLOW_CONFIG}"
+VLLM_PORT_LIST_INITIAL="${VLLM_PORT_LIST:-}"
+VLLM_CUDA_DEVICES_LIST_INITIAL="${VLLM_CUDA_DEVICES_LIST:-}"
 
 run_one_ckpt() {
   unset CONTINUE_RESUMING RUN_DIR RUN_ID_WITH_TIMESTAMP FLOW_OUTPUT
   unset VLLM_PORT_LIST VLLM_CUDA_DEVICES_LIST
+  [ -n "${VLLM_PORT_LIST_INITIAL}" ] && export VLLM_PORT_LIST="${VLLM_PORT_LIST_INITIAL}"
+  [ -n "${VLLM_CUDA_DEVICES_LIST_INITIAL}" ] && export VLLM_CUDA_DEVICES_LIST="${VLLM_CUDA_DEVICES_LIST_INITIAL}"
   export FLOW_CONFIG="${FLOW_CONFIG_INITIAL}"
 
   if [ "${ARG_RESUME}" -eq 1 ]; then
@@ -259,6 +304,10 @@ run_one_ckpt() {
         ;;
       resume)
         eval "$(python3 "${SCRIPT_DIR}/tools/print_continue_exports.py" "${status_dir}")"
+        if [ "${ARG_NO_VLLM}" -eq 1 ] || [ "${ARG_CONFIG_EXPLICIT}" -eq 1 ]; then
+          export FLOW_CONFIG="${FLOW_CONFIG_INITIAL}"
+          echo "Resume: using current FLOW_CONFIG=${FLOW_CONFIG}"
+        fi
         export CONTINUE_RESUMING=1
         echo "Resume: reusing RUN_DIR=${RUN_DIR}"
         ;;

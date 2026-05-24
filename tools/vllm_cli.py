@@ -45,6 +45,25 @@ def _patched(class_name: str):
 
 _tokenization_auto.tokenizer_class_from_name = _patched
 
+
+# ---------------------------------------------------------------------------
+# xstream_vllm_pruner installation (opt-in via XSTREAM_VLLM_PRUNER=1).
+# Runs BEFORE vllm is imported so the EVS / processor patches reliably take
+# effect for every worker spawned by ``vllm.entrypoints.cli.main``.
+# ---------------------------------------------------------------------------
+if os.environ.get("XSTREAM_VLLM_PRUNER", "").strip().lower() in {"1", "true", "yes", "y", "on"}:
+    _THIRD_PARTY_DIR = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), os.pardir, "third_party")
+    )
+    if _THIRD_PARTY_DIR not in sys.path:
+        sys.path.insert(0, _THIRD_PARTY_DIR)
+    try:
+        from xstream_vllm_pruner import install as _xstream_install  # type: ignore
+        _xstream_install()
+    except Exception as _exc:  # pragma: no cover - best-effort
+        print(f"vllm_cli: xstream_vllm_pruner install failed: {_exc}", file=sys.stderr)
+
+
 from vllm.entrypoints.cli.main import main  # noqa: E402
 
 if __name__ == "__main__":

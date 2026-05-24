@@ -1,7 +1,8 @@
 # Run artifacts (every RUN_DIR under outputs/)
 outputs/
 cache/
-logs/
+logs/*
+!logs/.gitkeep
 *.log
 *.pid
 nohup.out

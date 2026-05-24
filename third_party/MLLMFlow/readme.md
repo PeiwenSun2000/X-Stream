@@ -1,23 +1,23 @@
 # MLLMFlow
 
-多模态智能对话流程构建工具，支持文本、图像、视频、本地文件以及大语言模型的灵活组合调用。
+Multimodal intelligent conversation workflow builder that supports flexible composition of text, images, videos, local files, and large language model calls.
 
-## 安装
+## Installation
 
 ```bash
 pip install -e .
 ```
 
-或者手动安装依赖：
+Alternatively, install dependencies manually:
 
 ```bash
 pip install git+https://github.com/guanhuankang/ModelHub.git
 pip install requests moviepy==2.2.1 json_repair
 ```
 
-## 1. 模型配置
+## 1. Model Configuration
 
-创建 `models.json`（遵循 ModelHub 配置格式）：
+Create `models.json` (following the ModelHub configuration format):
 
 ```json
 {
@@ -41,23 +41,23 @@ pip install requests moviepy==2.2.1 json_repair
 }
 ```
 
-配置说明：
-- `adapter`: 适配器类型（openai, gemini, doubao, qwen 等）
-- `model_name`: 模型名称
-- `endpoint`: API 端点（支持 `{model_name}` 和 `{api_key}` 模板变量）
-- `api_key`: API 密钥（可选）
-- `weight`: 负载均衡权重（可选，默认 1.0）
-- `request_params`: 模型请求参数（可选，如 temperature, top_k 等）
-- `max_video_size_mb`: 最大视频大小限制（可选）
+Configuration Notes:
+- `adapter`: Adapter type (openai, gemini, doubao, qwen, etc.)
+- `model_name`: Model name
+- `endpoint`: API endpoint (supports `{model_name}` and `{api_key}` template variables)
+- `api_key`: API key (optional)
+- `weight`: Load-balancing weight (optional, default 1.0)
+- `request_params`: Model request parameters (optional, such as temperature, top_k, etc.)
+- `max_video_size_mb`: Maximum video size limit (optional)
 
-## 2. 模板示例
+## 2. Template Example
 
-创建 `template.json`（JSON 格式）：
+Create `template.json` (JSON format):
 
 ```json
 {
   "vars": {
-    "instruction": "请用中文回答"
+    "instruction": "Please answer in English"
   },
   "rounds": [
     {
@@ -78,7 +78,7 @@ pip install requests moviepy==2.2.1 json_repair
       "messages": [
         {
           "role": "user",
-          "content": "{{var:instruction}}这幅图片{{image:land.png}}描述了什么？"
+          "content": "{{var:instruction}}What does this image {{image:land.png}}depict?"
         },
         {
           "role": "assistant",
@@ -91,7 +91,7 @@ pip install requests moviepy==2.2.1 json_repair
       "messages": [
         {
           "role": "user",
-          "content": "{{image:land.mp4,time=1.0}}这帧画面如何？"
+          "content": "{{image:land.mp4,time=1.0}}What is shown in this frame?"
         },
         {
           "role": "assistant",
@@ -104,7 +104,7 @@ pip install requests moviepy==2.2.1 json_repair
       "messages": [
         {
           "role": "user",
-          "content": "简单介绍一下这个视频{{video:land.mp4,start=0,end=2,step=1,fps=1}}"
+          "content": "Briefly introduce this video {{video:land.mp4,start=0,end=2,step=1,fps=1}}"
         },
         {
           "role": "assistant",
@@ -117,7 +117,7 @@ pip install requests moviepy==2.2.1 json_repair
       "messages": [
         {
           "role": "user",
-          "content": "{{var:instruction}}综合以上信息，给出最终结论。"
+          "content": "{{var:instruction}}Based on the information above, provide the final conclusion."
         },
         {
           "role": "assistant",
@@ -125,7 +125,7 @@ pip install requests moviepy==2.2.1 json_repair
         },
         {
           "role": "user",
-          "content": "{{var:instruction}}再见。"
+          "content": "{{var:instruction}}Goodbye."
         },
         {
           "role": "assistant",
@@ -137,19 +137,19 @@ pip install requests moviepy==2.2.1 json_repair
 }
 ```
 
-**注意**：
-- 每一轮新对话开始，会清空上下文，但 `vars` 不会清空。可以通过 `vars` 跨轮次传递数据。
-- 每一轮支持多组对话（多个 user/assistant 对）。
-- `round_id` 可以是数字或字符串。
-- `content` 字段是字符串，可以包含占位符（如 `{{file:...}}`、`{{model:...}}` 等）。
+**Note**：
+- At the start of each new conversation round, context is cleared, but `vars` is not. Use `vars` to pass data across rounds.
+- Each round supports multiple conversation pairs (multiple user/assistant pairs).
+- `round_id` can be a number or string。
+- The `content` field is a string and may contain placeholders such as `{{file:...}}` and `{{model:...}}`.
 
-## 3. CLI 运行
+## 3. CLI Usage
 
-### 基本用法
+### Basic Usage
 
 `usage: mllmflow [-h] --model-config MODEL_CONFIG --input INPUT [--output OUTPUT] [--model-replacement MODEL_REPLACEMENT] [--prompt-root PROMPT_ROOT] [--image-root IMAGE_ROOT] [--video-root VIDEO_ROOT] [--cache-dir CACHE_DIR]`
 
-### 完整示例
+### Complete Example
 
 ```bash
 mllmflow --model-config models.json --input template.json --output output.json
@@ -165,40 +165,40 @@ mllmflow \
   --cache-dir ./cache
 ```
 
-### 参数说明
+### Parameter Reference
 
-- `--model-config`: 模型配置文件路径（必需）
-- `--input`: 输入模板文件路径（必需）
-- `--output`: 输出结果文件路径（可选，不指定则输出到 stdout）
-- `--model-replacement`: 模型替换，格式 `old>new`，多个用逗号分隔
-  - 示例：`"gpt-4o>gemini-3-pro-preview,doubao-seed>qwen3-vl"`
-- `--prompt-root`: prompt 文件根目录（可选）
-- `--image-root`: 图片资源根目录（可选）
-- `--video-root`: 视频资源根目录（可选）
-- `--cache-dir`: 缓存目录（默认 `media_dir`）
+- `--model-config`: Path to the model configuration file（required）
+- `--input`: Path to the input template file（required）
+- `--output`: Output result file path (optional; outputs to stdout if omitted)
+- `--model-replacement`: Model replacement in `old>new` format; separate multiple entries with commas
+  - Example:`"gpt-4o>gemini-3-pro-preview,doubao-seed>qwen3-vl"`
+- `--prompt-root`: Root directory for prompt files (optional)
+- `--image-root`: Root directory for image assets (optional)
+- `--video-root`: Root directory for video assets (optional)
+- `--cache-dir`: Cache directory (default: `media_dir`)
 
-### CLI 输出
+### CLI Output
 
-CLI 会显示每个模型调用的进度和延迟：
+The CLI displays progress and latency for each model call:
 
 ```
 [round-1_2][gpt-4o] Sending Request ...
 [round-1_2][gpt-4o] latency: 2.35s
 ```
 
-## 4. Python SDK 使用
+## 4. Python SDK Usage
 
 ```python
 from mllmflow import MLLMFlow
 import json
 
-# 初始化
+# Initialize
 flow = MLLMFlow("models.json", cache_dir="media_dir")
 
-# 定义模板（JSON 格式）
+# Define a template (JSON format)
 template = {
     "vars": {
-        "instruction": "请用中文回答"
+        "instruction": "Please answer in English"
     },
     "rounds": [
         {
@@ -219,7 +219,7 @@ template = {
             "messages": [
                 {
                     "role": "user",
-                    "content": "{{image:photo.jpg}}描述这张图片"
+                    "content": "{{image:photo.jpg}}Describe this image"
                 },
                 {
                     "role": "assistant",
@@ -230,19 +230,19 @@ template = {
     ]
 }
 
-# 或者从文件读取
+# Or read from a file
 # with open("template.json", "r", encoding="utf-8") as f:
 #     template = json.load(f)
 
-# 运行流程
+# Run the workflow
 result = flow.run(template)
 
-# 查看结果
-print(result["vars"])  # 变量
-print(result["rounds"])  # 对话轮次
+# Inspect results
+print(result["vars"])  # Variables
+print(result["rounds"])  # Conversation Rounds
 ```
 
-### 模型替换
+### Model Replacement
 
 ```python
 flow = MLLMFlow(
@@ -251,11 +251,11 @@ flow = MLLMFlow(
 )
 ```
 
-## 5. 模板语法
+## 5. Template Syntax
 
-### JSON 格式
+### JSON Format 
 
-模板采用 JSON 格式，包含两个主要部分：
+Templates use JSON format and contain two main sections:
 
 ```json
 {
@@ -280,24 +280,24 @@ flow = MLLMFlow(
 }
 ```
 
-### 变量定义
+### Variable Definition
 
-在 `vars` 对象中定义变量：
+Define variables in the `vars` object:
 
 ```json
 {
   "vars": {
-    "instruction": "请用中文回答",
+    "instruction": "Please answer in English",
     "temperature": "0.7"
   }
 }
 ```
 
-变量可在模板中通过 `{{var:key}}` 引用。
+Variables can be referenced in templates with `{{var:key}}`.
 
-### 对话轮次
+### Conversation Rounds
 
-在 `rounds` 数组中定义对话轮次：
+Define conversation rounds in the `rounds` array:
 
 ```json
 {
@@ -307,11 +307,11 @@ flow = MLLMFlow(
       "messages": [
         {
           "role": "user",
-          "content": "内容"
+          "content": "content"
         },
         {
           "role": "assistant",
-          "content": "内容"
+          "content": "content"
         }
       ]
     }
@@ -319,75 +319,75 @@ flow = MLLMFlow(
 }
 ```
 
-- `round_id`: 轮次标识，可以是数字或字符串
-- `messages`: 消息数组，每个消息包含 `role` 和 `content`
-- `role`: 角色，通常为 `user`、`assistant` 或 `system`
-- `content`: 内容字符串，可以包含占位符
+- `round_id`: Round identifier，can be a number or string
+- `messages`: Message array; each message contains `role` and `content`
+- `role`: Role, usually `user`, `assistant`, or `system`
+- `content`: Content string that may contain placeholders
 
-### 占位符
+### Placeholders
 
-#### `{{var:name}}` - 引用变量
+#### `{{var:name}}` - Reference a Variable
 
 ```
 user: {{var:instruction}}
 ```
 
-#### `{{file:path}}` - 读取文件
+#### `{{file:path}}` - Read a file
 
 ```
 user: {{file:prompt.txt}}
 ```
 
-#### `{{image:path}}` - 插入图片
+#### `{{image:path}}` - Insert an image
 
 ```
-# 插入图片
+# Insert an image
 user: {{image:photo.jpg}}
 
-# 从视频截帧
+# Extract a frame from a video
 user: {{image:video.mp4,time=1.5}}
 
-# 指定缓存目录
+# Specify the cache directory
 user: {{image:photo.jpg,cache_dir=./cache}}
 ```
 
-参数：
-- `time=秒数`: 从视频指定时间截取一帧
-- `cache_dir=路径`: 缓存目录
+Parameters:
+- `time=seconds`: Extract one frame from the specified time in a video
+- `cache_dir=path`: Cache directory
 
-#### `{{video:path}}` - 插入视频
+#### `{{video:path}}` - Insert a video
 
 ```
-# 插入视频片段
+# Insert a video clip
 user: {{video:demo.mp4,start=0,end=10}}
 
-# 切分成多段
+# Split into multiple segments
 user: {{video:demo.mp4,start=0,end=10,step=2}}
 
-# 指定帧率和缓存
+# Specify frame rate and cache
 user: {{video:demo.mp4,start=0,end=10,fps=1,cache_dir=./cache}}
 ```
 
-参数：
-- `start=秒数`: 起始时间（默认 0）
-- `end=秒数`: 结束时间（默认视频全长）
-- `step=秒数`: 切分步长，指定后会将视频切分成多段
-- `fps=帧率`: 抽帧率（可选）
-- `cache_dir=路径`: 缓存目录
+Parameters:
+- `start=seconds`: Start time (default 0)
+- `end=seconds`: End time (default: full video duration)
+- `step=seconds`: Step size for splitting; when specified, the video is split into multiple segments
+- `fps=frame_rate`: Frame sampling rate (optional)
+- `cache_dir=path`: Cache directory
 
-#### `{{model:name}}` - 调用模型
+#### `{{model:name}}` - Call a model
 
 ```
 assistant: {{model:gpt-4o,as=answer,media_limit=1,return=1}}
 ```
 
-参数：
-- `as=变量名`: 将模型输出保存到变量
-- `return=0/1`: 是否将回复加入后续对话上下文（1=加入，默认；0=不加入）
-- `media_limit=数量`: 本次调用允许的最大多媒体数量
+Parameters:
+- `as=variable_name`: Save model output to a variable
+- `return=0/1`: Whether to add the response to subsequent conversation context (1=add, default; 0=do not add)
+- `media_limit=count`: Maximum number of multimedia items allowed for this call
 
-## 完整示例
+## Complete Example
 
-运行 `demo/demo.py` 查看完整功能演示。
+Run `demo/demo.py` to view the complete feature demo.
 
-运行 `demo/test_cli.py` 查看 CLI 测试示例。
+Run `demo/test_cli.py` to view the CLI test example.

@@ -27,7 +27,7 @@ _STATE_FILE = LOG_DIR / ".state.json"
 
 
 def _get_write_dir() -> Path:
-    """返回当前应写入的子目录，状态由单文件 .state.json 维护"""
+    """Return the current subdirectory to write into; state is maintained by the single .state.json file"""
     LOG_DIR.mkdir(exist_ok=True)
     try:
         with open(_STATE_FILE, "r", encoding="utf-8") as f:
@@ -47,7 +47,7 @@ def _get_write_dir() -> Path:
 
 
 def write_log(log_data: dict, request_id: str = None):
-    """写入日志到文件，按 logs/0、logs/1... 分子目录，每目录最多 N 个文件"""
+    """Write logs to files, split across logs/0, logs/1, ... subdirectories, with at most N files per directory"""
     if request_id is not None and os.environ.get("MODELHUB_LOG", "true").lower()=="true":
         target_dir = _get_write_dir()
         log_file = target_dir / f"{request_id}_{time.time()}.json"

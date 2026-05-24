@@ -177,7 +177,7 @@ class StreamEval:
         qa_list = [qa | res for qa, res in zip(qa_list, results)]
         qa_results = {"results": qa_list}
 
-        # 统计：总样本数、总平均分；按 type 的平均分与比例；按 label 的比例与平均分
+        # Statistics: total sample count and overall average score; average score and ratio by type; ratio and average score by label
         n = len(qa_list)
         scores = [r.get("score", 0) for r in qa_list]
         total_avg = sum(scores) / n if n else 0

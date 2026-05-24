@@ -3,7 +3,7 @@ from ..model_hub import ModelClient, register_adapter
 from ..utils import to_base64
 from typing import List, Dict, Any
 
-# Gemini 单次请求最多 10 个视频，超过时均匀采样 10 个
+# Gemini supports at most 10 videos per request; uniformly sample 10 if there are more
 GEMINI_MAX_VIDEOS = 10
 
 
@@ -15,12 +15,12 @@ def _is_video_part(part: Dict[str, Any]) -> bool:
 
 
 def _uniform_sample_video_parts(parts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """若视频 part 超过 GEMINI_MAX_VIDEOS，则均匀取 GEMINI_MAX_VIDEOS 个，保留非视频 part 不变。"""
+    """If video parts exceed GEMINI_MAX_VIDEOS, uniformly keep GEMINI_MAX_VIDEOS of them and leave non-video parts unchanged."""
     video_indices = [i for i, p in enumerate(parts) if _is_video_part(p)]
     n = len(video_indices)
     if n <= GEMINI_MAX_VIDEOS:
         return parts
-    # 在 [0, n-1] 上均匀取 GEMINI_MAX_VIDEOS 个下标（均匀采样，不是取前 10 个）
+    # Uniformly select GEMINI_MAX_VIDEOS indices from [0, n-1] (uniform sampling, not the first 10)
     if GEMINI_MAX_VIDEOS <= 1:
         selected_positions = [0] if GEMINI_MAX_VIDEOS else []
     else:
@@ -30,7 +30,7 @@ def _uniform_sample_video_parts(parts: List[Dict[str, Any]]) -> List[Dict[str, A
 
 
 def _drop_first_n_video_parts(contents: List[Dict[str, Any]], n: int) -> List[Dict[str, Any]]:
-    """从整次请求的开头丢弃前 n 个视频 part（按顺序），保留后面的内容，用于 body too large 时逐帧裁剪重试。"""
+    """Drop the first n video parts from the beginning of the full request in order, keeping the later content; used for frame-by-frame trimming retries when the body is too large."""
     if n <= 0:
         return contents
     video_locations = []
@@ -51,8 +51,8 @@ def _drop_first_n_video_parts(contents: List[Dict[str, Any]], n: int) -> List[Di
 
 
 def _limit_payload_videos_to_max(contents: List[Dict[str, Any]], max_videos: int = GEMINI_MAX_VIDEOS) -> List[Dict[str, Any]]:
-    """整次请求中视频 part 总数不超过 max_videos，超过则在全请求内均匀采样 max_videos 个。"""
-    # 收集所有 (content_idx, part_idx) 且该 part 为视频
+    """Ensure the total number of video parts in the full request does not exceed max_videos; uniformly sample max_videos across the full request when it does."""
+    # Collect all (content_idx, part_idx) pairs where the part is a video
     video_locations = []
     for ci, content in enumerate(contents):
         for pi, part in enumerate(content.get("parts", [])):
@@ -61,13 +61,13 @@ def _limit_payload_videos_to_max(contents: List[Dict[str, Any]], max_videos: int
     n = len(video_locations)
     if n <= max_videos:
         return contents
-    # 均匀取 max_videos 个
+    # Uniformly select max_videos items
     if max_videos <= 1:
         keep_locations = set(video_locations[:1]) if max_videos else set()
     else:
         selected_positions = [round(i * (n - 1) / (max_videos - 1)) for i in range(max_videos)]
         keep_locations = {video_locations[p] for p in selected_positions}
-    # 每个 content 只保留被选中的视频 part 及全部非视频 part；若某 content 筛后为空则跳过，避免把“整段原 content”发出去导致仍超 10 个视频
+    # For each content item, keep only selected video parts and all non-video parts; skip any content item that becomes empty to avoid sending the full original content and still exceeding 10 videos
     result = []
     for ci, content in enumerate(contents):
         new_parts = [
@@ -76,7 +76,7 @@ def _limit_payload_videos_to_max(contents: List[Dict[str, Any]], max_videos: int
         ]
         if new_parts:
             result.append({**content, "parts": new_parts})
-        # else: 不追加原 content，否则会再次带入全部视频，总视频数仍可超过 10
+        # else: Do not append the original content; otherwise it would bring back all videos and the total video count could still exceed 10
     return result
 
 
@@ -124,7 +124,7 @@ class GeminiAdapter(ModelClient):
                         parts.append({"inline_data": {"mime_type": "image/png", "data": b64}})
                 elif typ == "text":
                     text = item.get("text", "").strip()
-                    # Gemini 要求 part 的 data oneof 必须有一个已初始化字段，空字符串视为未初始化，会报错
+                    # Gemini requires the part data oneof to contain an initialized field; an empty string is treated as uninitialized and causes an error
                     if text:
                         parts.append({"text": text})
 
@@ -135,14 +135,14 @@ class GeminiAdapter(ModelClient):
         return {"contents": contents, "system_instruction": system_instruction}
 
     def build_payload(self, messages, request_params: Dict[str, Any]) -> Dict[str, Any]:
-        # messages 在这里是 format_messages 返回的格式化结果
+        # messages here is the formatted result returned by format_messages
         formatted = messages if isinstance(messages, dict) else {"contents": messages, "system_instruction": None}
 
-        # 验证 contents 不为空
+        # Validate that contents is not empty
         if not formatted.get("contents"):
             raise ValueError("Contents cannot be empty")
 
-        # body too large 时从开头丢弃前 N 个视频，再限制总数
+        # When the body is too large, drop the first N videos from the beginning, then limit the total count
         drop_n = request_params.get("_drop_first_n_videos", 0)
         contents = _drop_first_n_video_parts(formatted["contents"], drop_n)
         if not contents:
@@ -154,13 +154,13 @@ class GeminiAdapter(ModelClient):
         if formatted.get("system_instruction"):
             payload["system_instruction"] = {"parts": [{"text": formatted["system_instruction"]}]}
 
-        # 直接添加 request_params 到 payload（跳过内部键如 _drop_first_n_videos）
+        # Add request_params directly to the payload (skip internal keys such as _drop_first_n_videos)
         for k, v in request_params.items():
             if k in ("contents", "system_instruction") or (k.startswith("_")):
                 continue
             payload[k] = v
 
-        # 构建请求头：gemini 使用 x-goog-api-key
+        # Build request headers: Gemini uses x-goog-api-key
         headers = {}
         if self.api_key and "{api_key}" not in self.endpoint:
             headers["x-goog-api-key"] = self.api_key
@@ -177,7 +177,7 @@ class GeminiAdapter(ModelClient):
         if finish_reason == "SAFETY":
             raise RuntimeError("Response blocked by safety filters.")
 
-        # 获取最后一个 type=text 的 part
+        # Get the last part with type=text
         parts = candidate.get("content", {}).get("parts", [])
         content = ""
         for part in reversed(parts):

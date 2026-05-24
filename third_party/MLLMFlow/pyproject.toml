@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mllmflow"
 version = "2.1.3"
-description = "多模态智能对话流程构建工具"
+description = "Multimodal intelligent conversation workflow builder"
 readme = "readme.md"
 requires-python = ">=3.10"
 dependencies = [

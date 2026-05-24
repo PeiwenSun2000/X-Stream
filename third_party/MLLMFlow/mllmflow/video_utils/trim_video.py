@@ -13,14 +13,16 @@ def trim_video(
     start_time: str,
     end_time: str,
     temp_dir: str = "moviepy_tmp",
-    fps: float = None, # fps采样速率
+    fps: float = None, # fps sampling rate
 ) -> dict:
     """
     Trim video to specified time range, using original video/audio bitrate to preserve quality.
     Output file size will naturally be smaller than original (since it's a clip).
     """
 
-    print(video_path, trim_path)
+    verbose = os.environ.get("FLOW_VERBOSE_CACHE", "").lower() in ("1", "true", "yes")
+    if verbose:
+        print(video_path, trim_path)
 
     # Probe original video
     orig_info = probe_video(video_path)
@@ -97,7 +99,7 @@ def trim_video(
                     bitrate=f"{video_bitrate_kbps}k",
                     audio_bitrate=f"{audio_bitrate_kbps}k" if has_audio else None,
                     preset="medium",  # balance speed/quality
-                    fps=fps, ## 增加fps采样率
+                    fps=fps, ## increase fps sampling rate
                     logger=None,
                     temp_audiofile=str(Path(tmp_dir) / "aud.m4a"),
                     remove_temp=True,
@@ -116,6 +118,7 @@ def trim_video(
     if info is not None:
         info["size_bytes"] = info["file_size"]
         info["size_mb"] = info["file_size"] / (1024 * 1024)
-        print(f"✅ {trim_path} | video_bitrate={video_bitrate_kbps}k | "
-              f"audio_bitrate={audio_bitrate_kbps}k | {info['size_mb']:.2f} MB")
+        if verbose:
+            print(f"OK {trim_path} | video_bitrate={video_bitrate_kbps}k | "
+                  f"audio_bitrate={audio_bitrate_kbps}k | {info['size_mb']:.2f} MB")
     return info

@@ -1,16 +1,17 @@
 import json
+import os
 import random
 import time
 from typing import Dict, List, Any, Optional, Tuple
 import requests
 from .utils import load_json, write_log
 
-# 适配器注册表
+# Adapter registry
 _ADAPTERS: Dict[str, type] = {}
 
 
 def register_adapter(name: str):
-    """注册适配器装饰器"""
+    """Adapter registration decorator"""
     def decorator(cls):
         _ADAPTERS[name] = cls
         return cls
@@ -18,65 +19,66 @@ def register_adapter(name: str):
 
 
 class ModelClient:
-    """模型客户端基类"""
+    """Base model client class"""
 
     def __init__(self, config: Dict[str, Any]):
-        # 系统配置字段
-        self.model_name = config.get("model_name", "")
-        self.endpoint = config.get("endpoint", "")
-        self.api_key = config.get("api_key", "")
-        # 是否为本地 vLLM 部署的 Qwen 等模型。
-        # 这类模型的 400/429 多为请求内容本身问题（例如视频流无法解析），不适合长时间无限重试。
-        # 由 models.json 中的 is_vllm_local 字段控制，默认 False。
+        # System configuration fields
+        self.model_name = os.path.expandvars(str(config.get("model_name", "")))
+        self.endpoint = os.path.expandvars(str(config.get("endpoint", "")))
+        self.api_key = os.path.expandvars(str(config.get("api_key", "")))
+        # Whether this is a local vLLM deployment such as Qwen.
+        # For these models, 400/429 usually indicates a request-content issue (for example, an unparseable video stream), so long unlimited retries are inappropriate.
+        # Controlled by the is_vllm_local field in models.json; defaults to False.
         self.is_vllm_local = bool(config.get("is_vllm_local", False))
         self.max_retries = config.get("max_retries", 3)
         self.timeout = config.get("timeout", 600)
-        # 400/429 时持续重试直到成功或达到上限（退避重试）
+        # For 400/429 responses, keep retrying until success or the limit is reached (backoff retry)
         self.retry_4xx_429 = config.get("retry_4xx_429", True)
-        self.max_retries_4xx_429 = config.get("max_retries_4xx_429", 0)  # 0 表示不限制次数
-        self.max_retry_seconds_4xx_429 = config.get("max_retry_seconds_4xx_429", 3600)  # 最多重试总时长（秒）
+        self.max_retries_4xx_429 = config.get("max_retries_4xx_429", 0)  # 0 means unlimited attempts
+        self.max_retry_seconds_4xx_429 = config.get("max_retry_seconds_4xx_429", 3600)  # Maximum total retry duration (seconds)
         self.retry_backoff_initial = config.get("retry_backoff_initial", 5)
         self.retry_backoff_max = config.get("retry_backoff_max", 300)
 
-        # 视频大小限制（MB转字节）
+        # Video size limit (MB to bytes)
         max_video_size_mb = config.get("max_video_size_mb", 100)
         self.max_video_size_bytes = max_video_size_mb * 1024 * 1024
 
-        # 默认请求参数（从 request_params 字段读取）
+        # Default request parameters (read from the request_params field)
         self.default_request_params = config.get("request_params", {})
 
     def format_messages(self, context: List[Dict[str, Any]]) -> Any:
-        """格式化消息（由子类实现）"""
+        """Format messages (implemented by subclasses)"""
         pass
 
     def build_payload(self, messages: Any, request_params: Dict[str, Any]) -> Dict[str, Any]:
-        """构建请求负载和请求头（由子类实现）
+        """Build the request payload and headers (implemented by subclasses)
 
-        返回格式:
+        Return format:
         {
-            "headers": Dict[str, str],  # 请求头字典
-            "payload": Dict[str, Any]   # 请求负载
+            "headers": Dict[str, str],  # Headers dictionary
+            "payload": Dict[str, Any]   # Request payload
         }
         """
         pass
 
     def parse_response(self, response_json: Dict[str, Any]) -> Dict[str, Any]:
-        """解析响应（由子类实现）"""
+        """Parse the response (implemented by subclasses)"""
         pass
 
     def call(self, messages: List[Dict[str, Any]], request_params: Optional[Dict[str, Any]] = None, request_id = None) -> Dict[str, Any]:
-        """调用 API"""
+        """Call the API"""
         request_params = {**self.default_request_params, **(request_params or {})}
 
-        # 构建 URL（与 payload 无关，只建一次）
-        url = self.endpoint.format(
-            model_name=self.model_name,
-            api_key=self.api_key
+        # Build the URL once (independent of payload)
+        url = (
+            self.endpoint
+            .replace("{model_name}", self.model_name)
+            .replace("{api_key}", self.api_key)
         )
 
         drop_first_n = 0
         while True:
-            # body too large 时用 _drop_first_n_videos 从开头丢弃视频后重建 payload
+            # When the body is too large, use _drop_first_n_videos to drop videos from the beginning and rebuild the payload
             request_params_cur = {**request_params, "_drop_first_n_videos": drop_first_n}
             formatted_messages = self.format_messages(messages)
             result = self.build_payload(formatted_messages, request_params_cur)
@@ -102,7 +104,7 @@ class ModelClient:
             }
 
             body_too_large_retry = False
-            # 发送请求（带重试）。400/429 时单独做退避重试直到成功或达到上限。
+            # Send the request with retries. For 400/429, use separate backoff retries until success or the limit is reached.
             for attempt in range(self.max_retries):
                 retry_4xx_count = 0
                 start_time_4xx = time.time()
@@ -126,7 +128,7 @@ class ModelClient:
                         error_str = f"{e.response.status_code}: {error_msg}"
                         error_type = "HTTPError"
                         is_body_too_large = "body too large" in (e.response.text or "").lower() or "request body too large" in (e.response.text or "").lower()
-                        # request body too large：从开头丢弃 1 个视频后重建 payload 再试，直到成功或已无视频可减
+                        # request body too large: drop one video from the beginning, rebuild the payload, and retry until success or no videos remain
                         if status_code in (400, 429) and is_body_too_large and self.retry_4xx_429:
                             if video_part_count is not None and video_part_count >= 0:
                                 if video_part_count == 0:
@@ -143,7 +145,7 @@ class ModelClient:
                                         "error": error_str,
                                     }
                                 drop_first_n += 1
-                                print(f"[ModelHub] request body too large，丢弃开头 1 个视频后重试 (drop_first_n={drop_first_n}) ...")
+                                print(f"[ModelHub] request body too large，retrying after dropping one video from the beginning (drop_first_n={drop_first_n}) ...")
                                 log_data["attempts_history"].append({
                                     "attempt": f"body_too_large_drop_{drop_first_n}",
                                     "error": error_str,
@@ -152,10 +154,10 @@ class ModelClient:
                                 write_log(log_data, request_id)
                                 body_too_large_retry = True
                                 break
-                        # 400/429 时持续退避重试直到成功或达到上限
+                        # For 400/429 responses, keep using backoff retries until success or the limit is reached
                         if status_code in (400, 429) and self.retry_4xx_429 and not body_too_large_retry:
-                            # 本地 vLLM Qwen 等模型：4xx 一般表示当前请求内容有问题（如视频流无法打开），
-                            # 不应长时间无限退避重试，而是按普通错误走外层 max_retries 逻辑（默认 3 次后跳过）。
+                            # Local vLLM models such as Qwen: 4xx usually means the current request content has an issue (such as a video stream that cannot be opened),
+                            # so it should not use long unlimited backoff retries; instead, use the normal outer max_retries logic (skip after 3 attempts by default).
                             if self.is_vllm_local:
                                 break
                             retry_4xx_count += 1
@@ -187,7 +189,7 @@ class ModelClient:
                                     "error": error_str,
                                 }
                             print(
-                                f"[ModelHub] 400/429 重试第 {retry_4xx_count} 次（立即重试）: {error_msg[:150]}..."
+                                f"[ModelHub] 400/429 retry attempt {retry_4xx_count}  (retrying immediately): {error_msg[:150]}..."
                             )
                             log_data["attempts_history"].append({
                                 "attempt": f"4xx_retry_{retry_4xx_count}",
@@ -196,7 +198,7 @@ class ModelClient:
                             })
                             write_log(log_data, request_id)
                             continue
-                        # 非 400/429 或未开启 retry_4xx_429，按普通重试处理
+                        # For non-400/429 responses or when retry_4xx_429 is disabled, use normal retry handling
                         break
                     except requests.exceptions.Timeout:
                         error_str = f"Timeout: {self.timeout}s"
@@ -209,7 +211,7 @@ class ModelClient:
 
                 if body_too_large_retry:
                     break
-                # 非 400/429 的失败：记录并可能进行下一轮 attempt
+                # Non-400/429 failure: record it and possibly proceed to the next attempt
                 log_data["attempts_history"].append({
                     "attempt": attempt + 1,
                     "error": error_str,
@@ -231,109 +233,109 @@ class ModelClient:
 
 
 class ModelHub:
-    """模型中心，管理多个模型配置"""
+    """Model hub that manages multiple model configurations"""
 
     def __init__(self, config_path: str):
-        """加载 models.json 配置"""
+        """Load models.json configuration"""
         with open(config_path, "r", encoding="utf-8") as f:
             self.models_config = json.load(f)
 
     def _check_health(self, health_check_endpoint: str) -> bool:
-        """检查健康状态
+        """Check health status
 
         Args:
-            health_check_endpoint: 健康检查端点 URL
+            health_check_endpoint: Health-check endpoint URL
 
         Returns:
-            bool: 如果健康返回 True，否则返回 False
+            bool: Return True if healthy; otherwise return False
         """
         try:
             response = requests.get(health_check_endpoint, timeout=10)
-            # 检查 HTTP 状态码是否为 200
+            # Check whether the HTTP status code is 200
             if response.status_code != 200:
                 return False
 
-            # 尝试解析 JSON
+            # Try parsing JSON
             try:
                 health_data = load_json(response.text)
-                # 检查 status 字段是否为 healthy
+                # Check whether the status field is healthy
                 if isinstance(health_data, dict) and health_data.get("status") == "healthy":
                     return True
             except:
-                # 如果不是 JSON 或解析失败，但状态码是 200，也认为健康
+                # If it is not JSON or parsing fails but the status code is 200, still treat it as healthy
                 pass
 
-            # 如果状态码是 200，认为健康
+            # If the status code is 200, treat it as healthy
             return True
         except Exception:
-            # 任何异常都认为不健康
+            # Treat any exception as unhealthy
             return False
 
     def _is_config_healthy(self, config: Dict[str, Any]) -> bool:
-        """检查配置是否健康
+        """Check whether a configuration is healthy
 
         Args:
-            config: 配置字典
+            config: Configuration dictionary
 
         Returns:
-            bool: 如果健康返回 True，否则返回 False
+            bool: Return True if healthy; otherwise return False
         """
         health_check_endpoint = config.get("health_check_endpoint")
         if health_check_endpoint:
             return self._check_health(health_check_endpoint)
-        # 如果没有 health_check_endpoint，认为健康（不需要检查）
+        # If there is no health_check_endpoint, treat it as healthy (no check needed)
         return True
 
     def _select_config(self, model_name: str, excluded_indices: Optional[List[int]] = None) -> Tuple[Dict[str, Any], int]:
-        """根据权重选择配置，并检查健康状态
+        """Select a configuration by weight and check health status
 
-        逻辑：
-        1. 首先选出所有健康的 config（排除已尝试的索引）
-        2. 如果健康列表为空，等待并循环检查，直到出现非空的健康列表，或者超时（600秒）
-        3. 如果健康列表非空，根据权重（概率）从健康的 config 中选择一个
+        Logic:
+        1. First select all healthy configs (excluding indices already tried)
+        2. If the healthy list is empty, wait and keep checking until a non-empty healthy list appears or timeout is reached (600 seconds)
+        3. If the healthy list is non-empty, select one healthy config by weight (probability)
 
         Args:
-            model_name: 模型名称
-            excluded_indices: 要排除的配置索引列表
+            model_name: Model name
+            excluded_indices: List of configuration indices to exclude
 
         Returns:
-            tuple[Dict[str, Any], int]: 返回 (配置字典, 配置索引) 的元组
+            tuple[Dict[str, Any], int]: Return a tuple of (configuration dictionary, configuration index)
         """
         excluded_indices = excluded_indices or []
         configs = self.models_config[model_name]
-        max_wait_time = 6000  # 最多等待 6000 秒
-        check_interval = 5  # 每 5 秒检查一次
+        max_wait_time = 6000  # Wait at most 6000 seconds
+        check_interval = 5  # Check every 5 seconds
         start_time = time.time()
         total_configs = len(configs)
 
         while time.time() - start_time < max_wait_time:
-            # 筛选出所有健康的配置及其索引（排除已尝试的）
+            # Filter all healthy configurations and their indices (excluding those already tried)
             healthy_configs_with_index = [(c, i) for i, c in enumerate(configs)
                                          if i not in excluded_indices and self._is_config_healthy(c)]
             healthy_count = len(healthy_configs_with_index)
             elapsed_time = int(time.time() - start_time)
 
-            # 如果健康列表非空，根据权重选择
+            # If the healthy list is non-empty, select by weight
             if healthy_configs_with_index:
-                print(f"[ModelHub] 模型 {model_name}: 找到 {healthy_count}/{total_configs} 个健康配置，等待时间 {elapsed_time}s")
+                print(f"[ModelHub] Model {model_name}: found {healthy_count}/{total_configs} healthy configurations, wait time {elapsed_time}s")
                 healthy_configs = [c for c, _ in healthy_configs_with_index]
                 weights = [c.get("weight", 1.0) for c in healthy_configs]
                 selected_config = random.choices(healthy_configs_with_index, weights=weights, k=1)[0]
-                return selected_config  # 返回 (config, index)
+                return selected_config  # Return (config, index)
 
-            # 如果健康列表为空，显示等待提示
-            print(f"[ModelHub] 模型 {model_name}: 当前健康配置为 0/{total_configs}，等待中... (已等待 {elapsed_time}s/{max_wait_time}s)")
+            # If the healthy list is empty, show a waiting message
+            print(f"[ModelHub] Model {model_name}: currently has 0/{total_configs}，healthy configurations, waiting... (waited  {elapsed_time}s/{max_wait_time}s)")
 
-            # 等待后重试
+            # Wait and retry
             time.sleep(check_interval)
 
-        # 如果超过最大等待时间仍未找到健康的配置，返回第一个未排除的配置
+        # If no healthy configuration is found before the maximum wait time, return the first non-excluded configuration
         available_configs = [(c, i) for i, c in enumerate(configs) if i not in excluded_indices]
         if available_configs:
-            print(f"[ModelHub] 警告: 模型 {model_name} 在 {max_wait_time}s 内未找到健康配置，返回第一个可用配置")
+            print(f"[ModelHub] Warning: model {model_name} within {max_wait_time}s did not find a healthy configuration; returning the first available configuration")
             return available_configs[0]
-        # 如果所有配置都被排除了，返回第一个配置（让调用方处理错误）
-        print(f"[ModelHub] 警告: 模型 {model_name} 所有配置都已尝试，返回第一个配置")
+        # If all configurations have been excluded, return the first configuration and let the caller handle the error
+        print(f"[ModelHub] Warning: model {model_name} all configurations have been tried; returning the first configuration")
         return (configs[0], 0)
 
     def call(
@@ -343,7 +345,7 @@ class ModelHub:
         request_params: Optional[Dict[str, Any]] = None,
         request_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """调用模型 API，失败时自动重试其他配置"""
+        """Call the model API and automatically retry other configurations on failure"""
         tried_indices = []
         configs = self.models_config[model_name]
 
@@ -357,21 +359,21 @@ class ModelHub:
             current_request_id = f"{request_id}_cfg{config_index}" if request_id else None
             result = client.call(messages, request_params or {}, request_id=current_request_id)
 
-            # 如果结果不包含 error 字段，返回成功结果
+            # If the result does not contain an error field, return the successful result
             if "error" not in result:
                 return result
 
-            # 如果包含 error，记录已尝试的索引，继续尝试其他配置
+            # If it contains error, record the tried index and continue trying other configurations
             tried_indices.append(config_index)
-            # NOTE: 原本会把整段 error（含 vLLM 返回的视频/图像 numpy 数组）全量 print 出来，
-            # 刷屏严重。这里截断到前 300 字符；如需彻底静默，把下面两行注释掉即可。
+            # NOTE: Previously the full error was printed (including video/image numpy arrays returned by vLLM),
+            # which produced excessive output. Truncate it to the first 300 characters here; comment out the two lines below for complete silence.
             _err = str(result.get("error"))
             if len(_err) > 300:
                 _err = _err[:300] + f"... <truncated, total {len(_err)} chars>"
-            print(f"[ModelHub] 配置 {config_index} 请求失败，尝试其他配置: {_err}")
-            # print(f"[ModelHub] 配置 {config_index} 请求失败，尝试其他配置: {result.get('error')}")
+            print(f"[ModelHub] Configuration {config_index} request failed, trying another configuration: {_err}")
+            # print(f"[ModelHub] Configuration {config_index} request failed, trying another configuration: {result.get('error')}")
 
-        # 所有配置都尝试过了，返回最后一个错误结果
+        # All configurations have been tried; return the last error result
         return result
 
 

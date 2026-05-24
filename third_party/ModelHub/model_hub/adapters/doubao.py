@@ -49,12 +49,25 @@ class DoubaoAdapter(ModelClient):
             "model": self.model_name,
             "messages": messages
         }
-        # 直接添加所有 request_params 到 payload
+        # X-Stream patch-level pruner hand-off: when the upstream MLLMFlow runs
+        # ``cdpruner_token`` / ``surge_token`` it embeds an ``_xstream_pruner``
+        # struct in ``request_params``. The plugin running inside the local
+        # vLLM worker reads ``mm_processor_kwargs.xstream_instruction``, so we
+        # forward it here and consume the marker before generic param copy.
+        xstream_info = request_params.pop("_xstream_pruner", None) if isinstance(request_params, dict) else None
+        if isinstance(xstream_info, dict):
+            instruction = (xstream_info.get("instruction") or "").strip()
+            if instruction:
+                mm_kwargs = dict(payload.get("mm_processor_kwargs") or {})
+                mm_kwargs["xstream_instruction"] = instruction
+                payload["mm_processor_kwargs"] = mm_kwargs
+        # Add all request_params directly to the payload (after stripping the
+        # internal marker above to keep the wire payload clean).
         for k, v in request_params.items():
-            if k not in ("model", "messages"):
+            if k not in ("model", "messages") and not str(k).startswith("_"):
                 payload[k] = v
 
-        # 构建请求头：使用 Authorization Bearer
+        # Build request headers using Authorization Bearer
         headers = {}
         if self.api_key and "{api_key}" not in self.endpoint:
             headers["Authorization"] = f"Bearer {self.api_key}"

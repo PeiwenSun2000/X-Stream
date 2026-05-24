@@ -1,22 +1,22 @@
 # Model Hub
 
-统一的模型中心，用于管理和调用多个 AI 模型 API。
+A unified model hub for managing and calling multiple AI model APIs.
 
-## 安装
+## Installation
 
 ```bash
 uv pip install -e .
 ```
 
-## 使用
+## Usage
 
 ```python
 from model_hub import ModelHub
 
-# 创建实例
+# Create an instance
 hub = ModelHub("models.json")
 
-# 调用 API
+# Call the API
 response = hub.call(
     model_name="gpt-4o",
     messages=[{"role": "user", "content": "Hello!"}],
@@ -26,9 +26,9 @@ response = hub.call(
 print(response)
 ```
 
-## 配置
+## Configuration
 
-`models.json` 使用扁平结构，示例：
+`models.json` uses a flat structure, for example:
 
 ```json
 {
@@ -60,24 +60,24 @@ print(response)
 }
 ```
 
-### 配置字段说明
+### Configuration Fields
 
-**系统配置字段（顶层）：**
-- `adapter`: 适配器类型（必需），支持：`openai`, `gemini`, `doubao`, `qwen`
-- `model_name`: 模型名称（必需）
-- `endpoint`: API 端点 URL（必需），支持模板变量 `{model_name}` 和 `{api_key}`
-- `api_key`: API 密钥（可选）
-- `max_retries`: 最大重试次数（默认：3）
-- `timeout`: 超时时间，单位秒（默认：600）
-- `max_video_size_mb`: 视频大小限制，单位 MB（默认：100）
-- `weight`: 权重，用于多配置负载均衡（默认：1.0）
+**System configuration fields (top level):**
+- `adapter`: Adapter type (required), supports: `openai`, `gemini`, `doubao`, `qwen`
+- `model_name`: Model name (required)
+- `endpoint`: API endpoint URL (required), supports template variables `{model_name}` and `{api_key}`
+- `api_key`: API key (optional)
+- `max_retries`: Maximum retry count (default: 3)
+- `timeout`: Timeout in seconds (default: 600)
+- `max_video_size_mb`: Video size limit in MB (default: 100)
+- `weight`: Weight for load balancing across multiple configurations (default: 1.0)
 
-**请求参数字段：**
-- `request_params`: 默认请求参数字典（可选），包含如 `temperature`、`top_k` 等参数，调用时可通过 `request_params` 参数覆盖
+**Request parameter fields:**
+- `request_params`: Default request parameter dictionary (optional), containing parameters such as `temperature` and `top_k`; can be overridden by the `request_params` argument when calling
 
-### 多配置与权重
+### Multiple Configurations And Weights
 
-可以为同一个模型配置多个端点，使用 `weight` 字段控制选择概率：
+You can configure multiple endpoints for the same model and use the `weight` field to control selection probability:
 
 ```json
 {
@@ -88,20 +88,20 @@ print(response)
 }
 ```
 
-## 消息格式
+## Message Format
 
-支持文本、图片和视频输入：
+Supports text, image, and video inputs:
 
 ```python
-# 纯文本
+# Plain text
 messages = [{"role": "user", "content": "Hello!"}]
 
-# 多模态（文本 + 图片 + 视频）
+# Multimodal (text + image + video)
 messages = [
     {
         "role": "user",
         "content": [
-            {"type": "text", "text": "请描述这张图片"},
+            {"type": "text", "text": "Please describe this image"},
             {"type": "image", "image": "path/to/image.png"},
             {"type": "video", "video": "path/to/video.mp4"}
         ]
@@ -109,40 +109,40 @@ messages = [
 ]
 ```
 
-## 响应格式
+## Response Format
 
 ```python
 {
-    "content": "模型返回的文本内容",
+    "content": "Text content returned by the model",
     "usage": {
         "input_tokens": 10,
         "output_tokens": 20,
         "total_tokens": 30
     },
-    "raw_response": {...}  # 原始 API 响应
+    "raw_response": {...}  # Raw API response
 }
 ```
 
-## 日志功能
+## Logging
 
-当提供 `request_id` 时，会自动记录请求日志到 `logs/{request_id}.json`，包含：
+When `request_id` is provided, request logs are automatically written to `logs/{request_id}.json`, including:
 
-- `payload`: 请求负载
-- `response`: 原始响应
-- `attempts_history`: 失败尝试历史
-- `request_details`: 请求详情（模型名称、endpoint、超时等）
+- `payload`: Request payload
+- `response`: Raw response
+- `attempts_history`: Failed attempt history
+- `request_details`: Request details (model name, endpoint, timeout, etc.)
 
 ```python
 hub.call(
     model_name="gpt-4o",
     messages=[{"role": "user", "content": "Hello!"}],
-    request_id="debug"  # 日志将保存到 logs/debug.json
+    request_id="debug"  # The log will be saved to logs/debug.json
 )
 ```
 
-## 支持的适配器
+## Supported Adapters
 
-- **openai**: OpenAI 兼容 API（包括 Qwen 等）
+- **openai**: OpenAI compatible API (including Qwen, etc.)
 - **gemini**: Google Gemini API
-- **doubao**: 豆包 API
-- **qwen**: 通义千问 API
+- **doubao**: Doubao API
+- **qwen**: Qwen API

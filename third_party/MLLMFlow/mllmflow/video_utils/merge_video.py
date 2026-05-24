@@ -7,57 +7,57 @@ from pathlib import Path
 
 def merge_video(clip_list, output_path=None):
     """
-    极速拼接多个视频片段（要求编码参数一致，如你的 trim_video 输出）。
+    Rapidly concatenate multiple video clips (requires matching encoding parameters, such as trim_video output).
 
     Args:
-        clip_list (List[str]): 视频片段路径列表，按时间顺序
-        output_path (str, optional): 输出路径。若为 None，则自动生成（如 merged_output.mp4）
+        clip_list (List[str]): List of video clip paths in chronological order
+        output_path (str, optional): Output path. If None, it is generated automatically (for example, merged_output.mp4)
 
     Returns:
-        str: 输出视频的绝对路径
+        str: Absolute path of the output video
     """
     if not clip_list:
         raise ValueError("clip_list is empty")
 
-    # 检查所有文件存在
+    # Check that all files exist
     for p in clip_list:
         if not os.path.isfile(p):
             raise FileNotFoundError(f"Clip not found: {p}")
 
-    # 自动生成输出路径
+    # Automatically generate the output path
     if output_path is None:
         first = Path(clip_list[0])
         output_path = first.parent / f"{first.stem}_merged.mp4"
 
     output_path = os.path.abspath(output_path)
 
-    # 使用临时文件写入 filelist
+    # Write the file list to a temporary file
     with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
         for clip in clip_list:
-            # ffprobe 要求路径转义单引号（但通常不需要），这里用绝对路径+安全模式
+            # ffprobe requires single quotes in paths to be escaped (usually unnecessary); use absolute paths plus safe mode here
             f.write(f"file '{os.path.abspath(clip)}'\n")
         list_file = f.name
 
     try:
-        # 调用 ffmpeg 快速拼接（不重新编码！）
+        # Call ffmpeg for fast concatenation without re-encoding
         subprocess.run([
             "ffmpeg",
-            "-y",                    # 覆盖输出
-            "-f", "concat",         # 使用 concat demuxer
-            "-safe", "0",           # 允许绝对路径
+            "-y",                    # Overwrite output
+            "-f", "concat",         # Use the concat demuxer
+            "-safe", "0",           # Allow absolute paths
             "-i", list_file,
-            "-c", "copy",           # ⚡ 关键：流拷贝，不转码！
-            "-movflags", "+faststart",  # 优化网络播放
+            "-c", "copy",           # ⚡ Important: stream copy, no transcoding!
+            "-movflags", "+faststart",  # Optimize for network playback
             output_path
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     finally:
-        os.unlink(list_file)  # 清理临时文件
+        os.unlink(list_file)  # Clean up the temporary file
 
     return output_path
 
 
 if __name__ == "__main__":
-    # 简单测试
+    # Simple test
     import glob
     clips = sorted(glob.glob("tmp/*.mp4"))
     print(clips)

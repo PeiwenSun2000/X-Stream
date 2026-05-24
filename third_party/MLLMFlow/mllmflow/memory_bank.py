@@ -34,8 +34,8 @@ class HighlightTimeRange(BaseModel):
 
 class AtomicEvent(BaseModel):
     """
-    场景泛化的最小闭环字段（尽量都可选）：
-    不强绑定某单一运动，可容纳篮球/排球/棒球/CS/LOL 等。
+    Minimal closed-loop fields generalized across scenarios (keep them optional whenever possible):
+    Not tightly coupled to any single sport; can cover basketball, volleyball, baseball, CS, LoL, and more.
     """
 
     game_id: Optional[str] = None
@@ -444,14 +444,14 @@ class MemoryOrchestrator:
         """
         if not isinstance(text, str) or not text:
             return None
-        # 显式 score 标签：HOME 76-74, AWAY 74, score 76:74
+        # Explicit score tags: HOME 76-74, AWAY 74, score 76:74
         tagged = re.search(
             r"(?i)(?:home|away|score)[^\d]{0,8}(\d{1,3})\s*[-:]\s*(\d{1,3})",
             text,
         )
         if tagged:
             return int(tagged.group(1)), int(tagged.group(2))
-        # 仅当字符串中只有一对 N-N 且不是时钟（mm:ss）时才采用。
+        # Use this only when the string contains exactly one N-N pair and it does not look like a clock (mm:ss).
         dash_pairs = re.findall(r"(?<!\d)(\d{1,3})\s*-\s*(\d{1,3})(?!\d)", text)
         if len(dash_pairs) == 1:
             a, b = int(dash_pairs[0][0]), int(dash_pairs[0][1])
@@ -464,7 +464,7 @@ class MemoryOrchestrator:
         event_type = None
         sub_type = None
         result = None
-        # 泛化事件类型识别：体育/电竞共享层，不绑定单一项目。
+        # Generalized event-type recognition: a shared sports/esports layer, not tied to one specific game.
         if any(k in lowered for k in ("round_start", "round start", "freeze_end", "side_switch", "match_end")):
             event_type = "round_state"
         elif any(k in lowered for k in ("player_kill", "kill", "bomb_planted", "bomb_defused", "utility_use")):
@@ -500,7 +500,7 @@ class MemoryOrchestrator:
         ae_points_delta = model_ae.get("points_delta")
         ae_lineup_home = model_ae.get("lineup_home") if isinstance(model_ae.get("lineup_home"), list) else None
         ae_lineup_away = model_ae.get("lineup_away") if isinstance(model_ae.get("lineup_away"), list) else None
-        # 让模型提供的 event_id 接管去重锚点；否则 fallback 自动生成。
+        # Let the model-provided event_id take over as the deduplication anchor; otherwise generate a fallback automatically.
         provided_event_id = model_ae.get("event_id")
         if provided_event_id:
             ae_event_id = str(provided_event_id)
@@ -550,7 +550,7 @@ class MemoryOrchestrator:
                     **metadata.get("commentary", {}),
                     "overlay_text": overlay_text.strip(),
                 }
-                # 仅在 overlay_text 中出现明确 score 标签时，才把比分纳入 global state。
+                # Only add the score to global state when overlay_text contains an explicit score tag.
                 ot_score = self._extract_score_pair(overlay_text)
                 if ot_score:
                     metadata["global_state"] = {
@@ -724,7 +724,7 @@ class MemoryOrchestrator:
 
     def add_model_output(self, timestamp: str, model_output: str, importance_score: float = 0.8) -> MemoryActionResult:
         metadata, parsed = self._extract_metadata(model_output)
-        # 模型决策是跨流节目状态，统一放到 global，便于稳定 UPDATE。
+        # Model decisions are cross-stream program state, so store them under global to support stable UPDATE operations.
         stream_id = "global"
         atomic_event = self._build_atomic_event(model_output, timestamp, parsed)
         self._update_narrative_state(atomic_event)

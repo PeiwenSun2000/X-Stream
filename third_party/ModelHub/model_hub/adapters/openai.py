@@ -4,17 +4,17 @@ from typing import List, Dict, Any
 @register_adapter("openai")
 class OpenAIAdapter(ModelClient):
     def format_messages(self, context: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        # OpenAI adapter 不支持图片和视频，需要转换为文本
+        # The OpenAI adapter does not support images and videos, so they must be converted to text
         messages = []
         for msg in context:
             role = msg["role"]
             content = msg["content"]
 
-            # 如果是字符串，直接使用
+            # If it is a string, use it directly
             if isinstance(content, str):
                 messages.append({"role": role, "content": content})
             else:
-                # 如果是列表，处理每个 item
+                # If it is a list, process each item
                 text_parts = []
                 for item in content:
                     typ = item.get("type")
@@ -23,15 +23,15 @@ class OpenAIAdapter(ModelClient):
                         if text:
                             text_parts.append(text)
                     elif typ == "image":
-                        # 将图片转换为文本描述
+                        # Convert the image to a text description
                         img_path = item.get("image", "")
                         text_parts.append(f"[IMAGE: {img_path}]")
                     elif typ == "video":
-                        # 将视频转换为文本描述
+                        # Convert the video to a text description
                         video_path = item.get("video", "")
                         text_parts.append(f"[VIDEO: {video_path}]")
 
-                # 合并所有文本部分
+                # Merge all text parts
                 messages.append({"role": role, "content": " ".join(text_parts)})
 
         return messages
@@ -41,12 +41,12 @@ class OpenAIAdapter(ModelClient):
             "model": self.model_name,
             "messages": messages,
         }
-        # 直接添加所有 request_params 到 payload
+        # Add all request_params directly to the payload
         for k, v in request_params.items():
             if k not in ("model", "messages"):
                 payload[k] = v
 
-        # 构建请求头：使用 Authorization Bearer
+        # Build request headers using Authorization Bearer
         headers = {}
         if self.api_key and "{api_key}" not in self.endpoint:
             headers["Authorization"] = f"Bearer {self.api_key}"
