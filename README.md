@@ -1,12 +1,33 @@
-# X-Stream Inference
+<!-- markdownlint-disable MD033 MD041 -->
+
+# <img src="assets/logo.png" alt="X-Stream logo" width="10%"> X-Stream Inference
 
 Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**. This package runs online multi-stream video QA with local vLLM checkpoints or hosted API models.
+
+<p align="center">
+  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Project-Website-blue" alt="Project Website"></a>
+  <a href="https://huggingface.co/datasets/spw2000/X-stream"><img src="https://img.shields.io/badge/Dataset-HuggingFace-yellow" alt="Dataset HuggingFace"></a>
+  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Paper-arXiv-red" alt="Paper arXiv"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
+</p>
+
+<p align="center">
+  <img src="assets/teaser.png" alt="X-Stream multi-stream scenarios">
+</p>
 
 ## Introduction
 
 X-Stream is a multi-stream streaming understanding benchmark for evaluating how multimodal large language models handle concurrent video streams. It contains 4,220 curated QA pairs across 932 videos and covers 11 subtasks in multi-window, multi-view, and multi-device scenarios. The paper frames current MLLMs as naive multiplexers and studies spatial, temporal, and semantic ways to combine multiple streams into one model-consumable token sequence.
 
 The `inference/` package keeps the runtime simple: most users only need `run.sh`.
+
+## Pipeline
+
+<p align="center">
+  <img src="assets/multiplexing_pipeline.png" alt="X-Stream multiplexing pipeline" width="90%">
+</p>
+
+X-Stream evaluates online inference where synchronized streams are multiplexed into a single model-consumable sequence under a fixed average video-token rate. The runner supports spatial division for tiled video inputs, time division for stream-wise interleaving, and semantic division or token-level pruning for reducing redundant visual content before or inside the model call.
 
 Supported multi-stream modes:
 
@@ -67,7 +88,7 @@ Supported multi-stream modes:
 </table>
 <!-- markdownlint-enable MD033 -->
 
-`cdpruner_token` and `surge_token` are only available with local vLLM. Hosted API models cannot run patch-level token pruning because the pruning hook must be installed inside the vLLM worker.
+`cdpruner_token` and `surge_token` are only available with local vLLM. Hosted API models cannot run patch-level token pruning because the pruning hook must be installed inside the vLLM worker. The token-pruning backend covers Qwen-series variants with hard pruning (EVS) on Qwen2.5/3-VL and Qwen3-VL MoE, and soft pruning on Qwen2-VL, Qwen2.5-Omni Thinker, and Qwen3-Omni MoE Thinker. See [`third_party/xstream_vllm_pruner/README.md`](third_party/xstream_vllm_pruner/README.md) for backend details.
 
 ## Environment Setup
 
@@ -390,6 +411,11 @@ Useful flags:
 ```text
 inference/
 |-- README.md
+|-- LICENSE
+|-- assets/
+|   |-- logo.png                    # X-Stream logo used in this README
+|   |-- teaser.png                  # Scenario overview figure
+|   `-- multiplexing_pipeline.png   # Online inference and multiplexing pipeline
 |-- run.sh                         # Main entrypoint for inference runs
 |-- pipeline.sh                    # vLLM startup, resume, evaluation, cleanup
 |-- pyproject.toml                 # uv environment and dependency pins
