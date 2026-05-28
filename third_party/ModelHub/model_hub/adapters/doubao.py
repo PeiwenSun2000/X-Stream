@@ -45,22 +45,25 @@ class DoubaoAdapter(ModelClient):
         return messages
 
     def build_payload(self, messages, request_params: Dict[str, Any]) -> Dict[str, Any]:
+        request_params = dict(request_params or {})
         payload = {
             "model": self.model_name,
             "messages": messages
         }
+        raw_mm_kwargs = request_params.pop("mm_processor_kwargs", {}) or {}
+        mm_kwargs = dict(raw_mm_kwargs) if isinstance(raw_mm_kwargs, dict) else {}
         # X-Stream patch-level pruner hand-off: when the upstream MLLMFlow runs
         # ``cdpruner_token`` / ``surge_token`` it embeds an ``_xstream_pruner``
         # struct in ``request_params``. The plugin running inside the local
         # vLLM worker reads ``mm_processor_kwargs.xstream_instruction``, so we
         # forward it here and consume the marker before generic param copy.
-        xstream_info = request_params.pop("_xstream_pruner", None) if isinstance(request_params, dict) else None
+        xstream_info = request_params.pop("_xstream_pruner", None)
         if isinstance(xstream_info, dict):
             instruction = (xstream_info.get("instruction") or "").strip()
             if instruction:
-                mm_kwargs = dict(payload.get("mm_processor_kwargs") or {})
                 mm_kwargs["xstream_instruction"] = instruction
-                payload["mm_processor_kwargs"] = mm_kwargs
+        if mm_kwargs:
+            payload["mm_processor_kwargs"] = mm_kwargs
         # Add all request_params directly to the payload (after stripping the
         # internal marker above to keep the wire payload clean).
         for k, v in request_params.items():

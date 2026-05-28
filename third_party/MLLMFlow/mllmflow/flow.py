@@ -828,6 +828,15 @@ class MLLMFlow:
             #   the xstream_vllm_pruner plugin; the client simply forwards the
             #   instruction text via mm_processor_kwargs.
             request_extra: Dict[str, Any] = {}
+            if os.environ.get("FLOW_USE_AUDIO_IN_VIDEO", "false").lower() in {
+                "1",
+                "true",
+                "yes",
+                "y",
+            }:
+                request_extra["mm_processor_kwargs"] = {
+                    "use_audio_in_video": True,
+                }
             if self.multi_stream_mode == "cdpruner":
                 instruction_text = "".join(
                     p.get("text", "")

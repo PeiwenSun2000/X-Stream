@@ -1,17 +1,20 @@
 # Run artifacts (every RUN_DIR under outputs/)
 outputs/
 cache/
-logs/*
-!logs/.gitkeep
+logs/
+checkpoints/
+*.safetensors
+*.bin
+*.pt
+*.pth
 *.log
 *.pid
 nohup.out
 moviepy_tmp/
 
-# Test inputs / scratch produced by tests/make_samples.sh and QA runs
-tests/sample_*.jsonl
-tests/run_log.md
-tests/*.out
+# Local helper scripts and scratch QA runs
+tests/
+sbatch/
 
 # Live secrets — only configs/models.example.json is tracked
 configs/models.json

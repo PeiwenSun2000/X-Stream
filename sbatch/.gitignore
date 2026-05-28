@@ -1,5 +1,0 @@
-# Slurm runtime artifacts if jobs are submitted from this directory.
-logs/
-*.out
-*.err
-

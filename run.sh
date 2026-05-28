@@ -65,6 +65,7 @@ Inputs / IO:
   --warm-cache-only         Pre-generate video segment cache and exit (no vLLM/model calls)
   --cache-warm-workers N    Worker count for --warm-cache-only (default: --workers)
   --drop-audio              Drop all audio inputs inside mllmflow
+  --use-audio-in-video      Ask vLLM/Qwen-Omni to extract audio from video_url inputs
   --api-timeout SECS        Per-request timeout (default: 600)
 
 Eval:
@@ -103,6 +104,7 @@ ARG_CACHE_DIR="${FLOW_CACHE_DIR:-${SCRIPT_DIR}/cache}"
 ARG_WARM_CACHE_ONLY=0
 ARG_CACHE_WARM_WORKERS="${FLOW_CACHE_WARM_WORKERS:-}"
 ARG_DROP_AUDIO="${FLOW_DROP_AUDIO:-False}"
+ARG_USE_AUDIO_IN_VIDEO="${FLOW_USE_AUDIO_IN_VIDEO:-False}"
 ARG_API_TIMEOUT="${FLOW_API_TIMEOUT:-600}"
 ARG_STREAM_EVAL="${ENABLE_STREAM_EVAL:-true}"
 ARG_STREAM_EVAL_JUDGER="${STREAM_EVAL_JUDGER:-qwen3-235b-a22b-instruct-2507}"
@@ -137,6 +139,7 @@ while [ $# -gt 0 ]; do
     --warm-cache-only)    ARG_WARM_CACHE_ONLY=1; shift ;;
     --cache-warm-workers) ARG_CACHE_WARM_WORKERS="$2"; shift 2 ;;
     --drop-audio)         ARG_DROP_AUDIO="True"; shift ;;
+    --use-audio-in-video) ARG_USE_AUDIO_IN_VIDEO="True"; shift ;;
     --api-timeout)        ARG_API_TIMEOUT="$2"; shift 2 ;;
     --stream-eval)        ARG_STREAM_EVAL="true"; shift ;;
     --no-stream-eval)     ARG_STREAM_EVAL="false"; shift ;;
@@ -245,6 +248,7 @@ else
 fi
 [ -n "${ARG_CACHE_WARM_WORKERS}" ] && export FLOW_CACHE_WARM_WORKERS="${ARG_CACHE_WARM_WORKERS}"
 export FLOW_DROP_AUDIO="${ARG_DROP_AUDIO}"
+export FLOW_USE_AUDIO_IN_VIDEO="${ARG_USE_AUDIO_IN_VIDEO}"
 export FLOW_API_TIMEOUT="${ARG_API_TIMEOUT}"
 export FLOW_REPLACEMENT="MODEL>${ARG_MODEL}"
 if [ "${ARG_WARM_CACHE_ONLY}" -ne 1 ]; then

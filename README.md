@@ -1,108 +1,151 @@
-<!-- markdownlint-disable MD033 MD041 -->
-
-# <img src="assets/logo.png" alt="X-Stream logo" width="10%">X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding
-
-<p align="center">
-  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Project-Website-blue" alt="Project Website"></a>
-  <a href="https://huggingface.co/datasets/spw2000/X-stream"><img src="https://img.shields.io/badge/Dataset-HuggingFace-yellow" alt="Dataset HuggingFace"></a>
-  <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Paper-arXiv-red" alt="Paper arXiv"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="License"></a>
-</p>
+# X-Stream Inference
 
 Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**. This package runs online multi-stream video QA with local vLLM checkpoints or hosted API models.
 
-<p align="center">
-  <img src="assets/teaser.png" alt="X-Stream teaser">
-</p>
-
-## Abstract
+## Introduction
 
 X-Stream is a multi-stream streaming understanding benchmark for evaluating how multimodal large language models handle concurrent video streams. It contains 4,220 curated QA pairs across 932 videos and covers 11 subtasks in multi-window, multi-view, and multi-device scenarios. The paper frames current MLLMs as naive multiplexers and studies spatial, temporal, and semantic ways to combine multiple streams into one model-consumable token sequence.
 
-## Pipeline
-
-<p align="center">
-  <img src="assets/multiplexing_pipeline.png" alt="X-Stream multiplexing pipeline" width="90%">
-</p>
+The `inference/` package keeps the runtime simple: most users only need `run.sh`.
 
 Supported multi-stream modes:
 
-| Mode | Meaning | Input type |
-| --- | --- | --- |
-| `pixel` | Spatial division; use merged/tiled videos. | merged JSONL |
-| `time` | Time division; interleave synchronized streams. | multi-stream JSONL |
-| `code`, `code_adaptive` | Semantic stream selection. | multi-stream JSONL |
-| `cdpruner`, `surge` | Token-reduction baselines (segment-level). | multi-stream JSONL |
-| `cdpruner_token`, `surge_token` | Patch-level token pruning **inside frames**; local vLLM only. Full Qwen series coverage — hard prune (EVS) on Qwen2.5/3-VL and Qwen3-VL MoE; soft prune on Qwen2-VL, Qwen2.5-Omni Thinker and Qwen3-Omni MoE Thinker. See [`third_party/xstream_vllm_pruner/README.md`](third_party/xstream_vllm_pruner/README.md). | multi-stream JSONL |
+| Mode                    | Multiplexing term                                | Meaning                                                                                                                                                                                             | Input file                                  |
+| ----------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `pixel`                 | Spatial Division Multiplexing                    | Uses the pre-merged video input and sends each tiled visual stream as one spatial canvas without multi-stream segment expansion.                                                                    | `eval_relative_merged_phostream_type.jsonl` |
+| `time`                  | Time Division Multiplexing                       | Splits step-based video placeholders into segments and interleaves them as `Stream 1: A1`, `Stream 2: B1`, `Stream 1: A2`, `Stream 2: B2`, and so on.                                               | `eval_relative_multi_phostream_type.jsonl`  |
+| `code`, `code_adaptive` | Extra Exploration                                | `code` keeps the stream segment with the larger video-change score and marks the others as unchanged, while `code_adaptive` scales each changed stream's FPS between 0x and 2x based on that score. | `eval_relative_multi_phostream_type.jsonl`  |
+| `cdpruner`              | Semantic Division Multiplexing (Dropping frames) | Reuses time-style interleaving, then applies client-side media selection with CDPruner-style instruction relevance and diversity before the model call.                                             | `eval_relative_multi_phostream_type.jsonl`  |
+| `surge`                 | Extra Exploration                                | Reuses time-style interleaving, then applies client-side SURGE-style temporal surprise selection before the model call.                                                                             | `eval_relative_multi_phostream_type.jsonl`  |
+| `cdpruner_token`        | Semantic Division Multiplexing                   | Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level CDPruner token selection inside video frames.                 | `eval_relative_multi_phostream_type.jsonl`  |
+| `surge_token`           | Extra Exploration                                | Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level SURGE token selection inside video frames.                    | `eval_relative_multi_phostream_type.jsonl`  |
 
-## Repository Layout
+`cdpruner_token` and `surge_token` are only available with local vLLM. Hosted API models cannot run patch-level token pruning because the pruning hook must be installed inside the vLLM worker.
 
-```text
-inference/
-|-- run.sh                  # main entrypoint
-|-- pipeline.sh             # vLLM, resume, and evaluation helpers
-|-- configs/
-|   `-- models.example.json
-|-- tests/
-|   `-- make_samples.sh
-|-- tools/
-|-- third_party/
-|   |-- MLLMFlow
-|   |-- ModelHub
-|   `-- stream-eval
-`-- assets/
-```
+## Environment Setup
 
-## Installation
+### 1. Common Base Environment
+
+Use this base setup before running inference.
 
 Requirements:
 
-- Linux with NVIDIA GPU support for local vLLM runs.
+- Linux.
+- Python `>=3.12,<3.13`.
 - `uv >= 0.4`.
-- Python 3.12, resolved by `uv`.
+- `ffmpeg` and `ffprobe` on `PATH` for video probing and segment-cache generation.
+- NVIDIA GPU and CUDA-compatible drivers for local vLLM runs. API-only runs and cache prewarming can run without GPUs.
 
-Install dependencies:
+Install the project environment:
 
 ```bash
-export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 git clone https://github.com/PeiwenSun2000/X-Stream.git
 cd X-Stream/inference
 uv sync --extra local
 ```
 
-Run commands either through `uv run` or an activated environment:
+Use `uv run` for commands:
 
 ```bash
-export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
+uv run bash run.sh --help
+```
+
+Or activate the environment manually:
+
+```bash
 source .venv/bin/activate
 bash run.sh --help
 ```
 
-## Data And Model Setup
-
-The inference scripts expect MLLMFlow-ready JSONL files. Prepared evaluation files are included in the repository:
-
-```text
-../data/v1/eval_relative_merged_phostream_type.jsonl
-../data/v1/eval_relative_multi_phostream_type.jsonl
-../data/v2/strict/eval_relative_merged_phostream_type.jsonl
-../data/v2/strict/eval_relative_multi_phostream_type.jsonl
-../data/v2/loose/eval_relative_merged_phostream_type.jsonl
-../data/v2/loose/eval_relative_multi_phostream_type.jsonl
-```
-
-The v3 dataset release uses manifest files such as `../data/v3/eval_relative.json`; see `../data/v3/readme.md` for the dataset format. Convert v3 manifests to the MLLMFlow JSONL format before using them with this runner.
-
-Create a local model config:
+Create a local model configuration:
 
 ```bash
-export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 cp configs/models.example.json configs/models.json
 ```
 
-### Environment Variables For Evaluation
+### 2. Download Data
 
-`run.sh` runs `stream-eval` by default after inference succeeds. The evaluator writes `eval.sh` and `eval.json` under the run output directory. To make this reproducible from a fresh GitHub clone, set an explicit model config and judge model before running commands that should produce `eval.json`:
+Download the X-Stream dataset from [Hugging Face](https://huggingface.co/datasets/spw2000/X-stream). The dataset is distributed as JSONL manifests plus compressed video archives. In this repository, the examples place the downloaded dataset root directly at `data/`, so commands launched from `inference/` can refer to it as `../data`.
+
+```bash
+cd X-Stream
+pip install -U huggingface_hub
+huggingface-cli download spw2000/X-stream \
+  --repo-type dataset \
+  --local-dir data
+```
+
+If you also download video archives, install `zstd` and extract the archives from that dataset root:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y zstd
+python data/scripts/extract_archives.py --dataset-root data
+```
+
+To extract only the evaluation split or only the lightweight 2 fps model-input videos:
+
+```bash
+python data/scripts/extract_archives.py --dataset-root data --splits eval
+python data/scripts/extract_archives.py --dataset-root data --kinds reencoded
+```
+
+### 3. Data Files
+
+After download and extraction, the expected dataset root looks like this:
+
+```text
+data/
+|-- eval_relative.json
+|-- train_relative.json
+|-- eval_relative_merged_phostream_type.jsonl
+|-- eval_relative_multi_phostream_type.jsonl
+|-- archives/
+|   |-- SHA256SUMS
+|   |-- archives.json
+|   |-- eval/
+|   `-- train/
+|-- scripts/
+|   `-- extract_archives.py
+`-- data/
+    |-- eval/
+    |   |-- merged/
+    |   |-- reencoded/
+    |   `-- original/
+    `-- train/
+        |-- merged/
+        |-- reencoded/
+        `-- original/
+```
+
+The official dataset manifests are JSON Lines files with a `.json` extension:
+
+```text
+../data/eval_relative.json
+../data/train_relative.json
+```
+
+Each record stores video paths relative to the dataset root. The main fields are:
+
+- `merged_video_path`: a merged multi-stream video under `data/eval/merged/` or `data/train/merged/`.
+- `encoded_video_path`: synchronized per-stream videos under `data/eval/reencoded/` or `data/train/reencoded/`.
+- `original_video_path`: higher-fps source videos under `data/eval/original/` or `data/train/original/`.
+- `verified_responses`: verified QA annotations.
+
+The inference runner uses the MLLMFlow-ready evaluation JSONL files:
+
+```text
+../data/eval_relative_merged_phostream_type.jsonl
+../data/eval_relative_multi_phostream_type.jsonl
+```
+
+Use `eval_relative_merged_phostream_type.jsonl` with `--multi-stream pixel`. Use `eval_relative_multi_phostream_type.jsonl` with `time`, `code`, `code_adaptive`, `cdpruner`, `surge`, `cdpruner_token`, and `surge_token`.
+
+Use `eval_relative.json` for dataset inspection, upload checks, and release validation. `run.sh` expects the MLLMFlow-ready JSONL files above for inference.
+
+### 4. Local Runtime Variables
+
+For local vLLM checkpoint runs:
 
 ```bash
 export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
@@ -110,99 +153,252 @@ export FLOW_CONFIG=configs/models.json
 export STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507
 ```
 
-The default `configs/models.example.json` uses environment placeholders for hosted models and for the default judge. Export only the credentials for the providers you use:
+If `STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507`, provide a Qwen-compatible judge endpoint and key:
 
 ```bash
-# Required when STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507.
-export QWEN_ENDPOINT=https://your-qwen-compatible-endpoint.example/v1/chat/completions
-export QWEN_API_KEY=your_qwen_api_key
-
-# Required only if you run the matching hosted models from configs/models.json.
-export OPENROUTER_API_KEY=your_openrouter_api_key
-export OPENAI_API_KEY=your_openai_api_key
+export QWEN_ENDPOINT=https://<your-qwen-compatible-endpoint>/v1/chat/completions
+export QWEN_API_KEY=<your-qwen-api-key>
 ```
 
-For a local vLLM run with Qwen3-Omni inference and Qwen judge evaluation, the setup typically looks like:
+For hosted API models, export only the provider credentials used by the selected model:
 
 ```bash
-export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
-export FLOW_CONFIG=configs/models.json
-export STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507
-export QWEN_ENDPOINT=https://your-qwen-compatible-endpoint.example/v1/chat/completions
-export QWEN_API_KEY=your_qwen_api_key
+export OPENROUTER_API_KEY=<your-openrouter-api-key>
+export OPENAI_API_KEY=<your-openai-api-key>
+export GEMINI_API_KEY=<your-gemini-api-key>
 ```
 
-## Quickstart
+For a quick smoke test or inference-only run, add `--no-stream-eval` to avoid judge credentials.
 
-### Smoke Test
+### 5. Model Checkpoints
+
+Local vLLM runs need a downloaded checkpoint. The examples below use `Qwen3-Omni-30B-A3B-Instruct`, whose logical model name must match the key in `configs/models.json`.
+
+Download the checkpoint with the Hugging Face CLI:
 
 ```bash
-export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
-export FLOW_CONFIG=configs/models.json
-export STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507
-uv run bash tests/make_samples.sh 10
+cd X-Stream/inference
+pip install -U huggingface_hub
+huggingface-cli download Qwen/Qwen3-Omni-30B-A3B-Instruct \
+  --local-dir checkpoints/Qwen3-Omni-30B-A3B-Instruct
+```
+
+Then use the checkpoint root as `--vllm-model-path`:
+
+```bash
+--vllm-model-path ./checkpoints
+```
+
+The expected structure is:
+
+```text
+inference/
+`-- checkpoints/
+    `-- Qwen3-Omni-30B-A3B-Instruct/
+        |-- config.json
+        |-- tokenizer_config.json
+        |-- generation_config.json
+        |-- model-00001-of-*.safetensors
+        `-- ...
+```
+
+`pipeline.sh` also supports pointing `--vllm-model-path` directly at one checkpoint directory if that directory contains `config.json`:
+
+```bash
+--vllm-model-path ./checkpoints/Qwen3-Omni-30B-A3B-Instruct
+```
+
+For other local models, keep the same rule: the directory name under `checkpoints/` should match the logical model key passed through `--model`, or `--vllm-model-path` should point directly to a checkpoint directory with `config.json`.
+
+### 6. CLIP Weights For Pruning Modes
+
+Some pruning modes use CLIP features in addition to the main MLLM checkpoint:
+
+| Mode | CLIP usage |
+| --- | --- |
+| `cdpruner` | Uses `openai/clip-vit-large-patch14-336` for instruction relevance and visual diversity before the model call. |
+| `surge` | Uses `openai/clip-vit-large-patch14-336` to embed representative video frames before the model call; this is a client-side segment-level SURGE approximation, not vLLM-internal token pruning. |
+| `cdpruner_token` | Uses the CLIP text tower lazily when instruction text is available; if CLIP is unavailable, it falls back to visual-only diversity inside the local vLLM worker. |
+| `surge_token` | Does not require CLIP; it runs inside the local vLLM worker and computes surprise directly from post-vision-encoder video token embeddings. |
+
+If the machine has internet access, the CLIP weights are downloaded lazily through `transformers`. For offline or firewalled machines, pre-populate the Hugging Face cache before running pruning modes:
+
+```bash
+pip install -U huggingface_hub
+huggingface-cli download openai/clip-vit-large-patch14-336
+```
+
+If you use a custom Hugging Face cache location, set it before downloading and before running inference:
+
+```bash
+export HF_HOME=/path/to/hf-cache
+huggingface-cli download openai/clip-vit-large-patch14-336
+```
+
+Segment-level `cdpruner` and `surge` fall back to the default media-limit behavior if CLIP cannot be loaded, so the run may continue but it will not use the intended pruning strategy.
+
+### 7. Runtime Option Checklist
+
+For full local vLLM runs, keep these options together unless you intentionally change the experiment:
+
+| Option                                                                          | Why it matters                                                                                                         |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `--model Qwen3-Omni-30B-A3B-Instruct`                                           | Selects the logical model key from `configs/models.json`.                                                              |
+| `--vllm-model-path /path/to/checkpoints`                                        | Points vLLM to the local checkpoint root.                                                                              |
+| `--input ../data/eval_relative_*.jsonl`                                         | Selects the MLLMFlow-ready task file.                                                                                  |
+| `--multi-stream MODE`                                                           | Selects `pixel`, `time`, `code`, `code_adaptive`, `cdpruner`, `surge`, `cdpruner_token`, or `surge_token`.             |
+| `--video-root ../data`                                                          | Resolves `{{video:...}}` placeholders in the JSONL inputs.                                                             |
+| `--prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt` | Resolves `{{file:system_prompt.txt}}` in the JSONL inputs.                                                             |
+| `--tp 2`                                                                        | Sets vLLM tensor parallel size per service. Match this to your GPU count and memory.                                   |
+| `--workers 4`                                                                   | Sets MLLMFlow request concurrency. Use `1` for token-level pruning modes unless you have validated higher concurrency. |
+| `--max-model-len 200000`                                                        | Allows long multi-stream contexts; keep `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` when using this value.                       |
+| `--run-id NAME`                                                                 | Gives the output directory a reproducible, readable name.                                                              |
+
+For hosted API or smoke-test runs, add `--no-vllm`. For inference-only runs, add `--no-stream-eval`. Do not use `cdpruner_token` or `surge_token` with hosted API models; use `pixel`, `time`, `code`, `code_adaptive`, `cdpruner`, or `surge` instead.
+
+## Usage
+
+Start with the API-free smoke test, then add vLLM, hosted API models, or evaluation as needed.
+
+### 1. API-Free Smoke Test
+
+This command verifies the Python environment, CLI path, input parsing, output writing, and video-root resolution. It does not start vLLM and does not call any hosted API.
+
+```bash
+cd X-Stream/inference
 uv run bash run.sh \
   --model echo \
   --no-vllm \
-  --input tests/sample_10_merged.jsonl \
+  --no-stream-eval \
+  --input ../data/eval_relative_merged_phostream_type.jsonl \
   --multi-stream pixel \
   --workers 2 \
-  --video-root ../data/v1
+  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --video-root ../data \
+  --run-id smoke_echo_pixel
 ```
 
-### Local vLLM Model
+### 2. Local vLLM With Merged Pixel Input
+
+Use this when your checkpoint is available on the same machine. Keep `/path/to/checkpoints` as a placeholder for the local checkpoint root.
 
 ```bash
+cd X-Stream/inference
 export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 export FLOW_CONFIG=configs/models.json
 export STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507
+
 uv run bash run.sh \
   --model Qwen3-Omni-30B-A3B-Instruct \
-  --vllm-model-path /path/to/checkpoint \
-  --input ../data/v2/loose/eval_relative_multi_phostream_type.jsonl \
+  --vllm-model-path /path/to/checkpoints \
+  --input ../data/eval_relative_merged_phostream_type.jsonl \
+  --multi-stream pixel \
+  --tp 2 \
+  --workers 4 \
+  --max-model-len 200000 \
+  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --video-root ../data \
+  --run-id qwen3omni_pixel
+```
+
+### 3. Local vLLM With Multi-Stream Input
+
+Switch to `eval_relative_multi_phostream_type.jsonl` for temporal, semantic, and token-reduction modes.
+
+```bash
+cd X-Stream/inference
+export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
+export FLOW_CONFIG=configs/models.json
+export STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507
+
+uv run bash run.sh \
+  --model Qwen3-Omni-30B-A3B-Instruct \
+  --vllm-model-path /path/to/checkpoints \
+  --input ../data/eval_relative_multi_phostream_type.jsonl \
   --multi-stream time \
   --tp 2 \
   --workers 4 \
   --max-model-len 200000 \
-  --video-root ../data/v3
+  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --video-root ../data \
+  --run-id qwen3omni_time
 ```
 
-### Hosted API Model
+To run another non-token mode, change only `--multi-stream` and `--run-id`, for example `code`, `code_adaptive`, `cdpruner`, or `surge`.
+
+### 4. Local vLLM With Token-Level Pruning
+
+`surge_token` and `cdpruner_token` require a local vLLM backend. Do not pass `--no-vllm`, and do not use these modes with hosted API models.
 
 ```bash
+cd X-Stream/inference
 export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
 export FLOW_CONFIG=configs/models.json
-export STREAM_EVAL_JUDGER=qwen3-235b-a22b-instruct-2507
+
+uv run bash run.sh \
+  --model Qwen3-Omni-30B-A3B-Instruct \
+  --vllm-model-path /path/to/checkpoints \
+  --input ../data/eval_relative_multi_phostream_type.jsonl \
+  --multi-stream cdpruner_token \
+  --xstream-rho 0.25 \ # Choose the ratio that fits your data
+  --tp 2 \
+  --workers 1 \
+  --max-model-len 200000 \
+  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --video-root ../data \
+  --run-id qwen3omni_cdpruner_token
+```
+
+### 5. Hosted API Model
+
+Hosted API models do not start vLLM. Pass `--no-vllm` and make sure the relevant provider key exists in the environment. Patch-level token pruning modes (`cdpruner_token` and `surge_token`) are not supported for API models.
+
+```bash
+cd X-Stream/inference
+export FLOW_CONFIG=configs/models.json
+export OPENROUTER_API_KEY=<your-openrouter-api-key>
+
 uv run bash run.sh \
   --model qwen3-vl-30b-a3b-instruct \
   --no-vllm \
-  --input ../data/v1/eval_relative_merged_phostream_type.jsonl \
+  --input ../data/eval_relative_merged_phostream_type.jsonl \
   --multi-stream pixel \
   --workers 8 \
-  --video-root ../data/v1
+  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --video-root ../data \
+  --run-id api_qwen3vl_pixel
 ```
 
-### CPU Cache Prewarming
+### 6. CPU Cache Prewarming
 
-Long multi-stream videos are split into cached mp4 segments before model inference. On clusters with GPU-utilization cleanup policies, this CPU-bound MoviePy/ffmpeg stage can make a GPU job look idle. You can pre-generate the same cache on a CPU machine:
+Long multi-stream videos are split into cached MP4 segments before model inference. This MoviePy and ffmpeg stage is CPU-bound. Prewarm the cache on a CPU machine before a GPU run.
 
 ```bash
-export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
+cd X-Stream/inference
 uv run bash run.sh \
-  --input ../data/v2/strict/eval_relative_multi_phostream_type.jsonl \
+  --input ../data/eval_relative_multi_phostream_type.jsonl \
   --warm-cache-only \
   --workers 64 \
   --cache-warm-workers 64 \
   --cache-dir ./cache \
-  --run-id prewarm_qwen3omni_cdpruner_token \
-  --video-root ../data/v3
+  --run-id prewarm_multi \
+  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --video-root ../data
 ```
 
-`--warm-cache-only` does not start vLLM and does not call any model; it only resolves `{{video:...}}` placeholders and writes the segment cache. The cache key is based on the resolved video path, `start/end/fps`, and `--cache-dir`, not on the model, run id, or vLLM port. Keep `--cache-dir`, `--input`, `--video-root`, and the video placeholder parameters identical between prewarming and the later GPU run so the cached files are reused. If later commands omit `--cache-dir`, `run.sh` defaults to `./cache` under this `inference/` directory, so the example above is directly reusable by later commands launched from the same checkout. For `time`, `cdpruner`, `surge`, `cdpruner_token`, and `surge_token`, `--multi-stream` can be omitted during prewarming because the same base video segments are generated. For `code_adaptive`, pass the same `--multi-stream code_adaptive` as the later run because it may create additional fps-scaled segments. Start with a worker count below the CPU count if the cache directory is on shared storage, then increase it if IO remains healthy.
+`--warm-cache-only` does not start vLLM and does not call any model. It only resolves `{{video:...}}` placeholders and writes the segment cache. Keep `--cache-dir`, `--input`, `--video-root`, and video placeholder parameters identical between prewarming and the later GPU run.
+
+For `time`, `cdpruner`, `surge`, `cdpruner_token`, and `surge_token`, `--multi-stream` can be omitted during prewarming because the same base video segments are generated. For `code_adaptive`, pass the same `--multi-stream code_adaptive` as the later run because it may create additional fps-scaled segments.
 
 ## Outputs And Evaluation
 
-Each run writes to `outputs/<RUN_ID>_<YYYYMMDD-HHMMSS>/`:
+Each run writes to:
+
+```text
+outputs/<RUN_ID>_<YYYYMMDD-HHMMSS>/
+```
+
+Typical contents:
 
 ```text
 run_env.json
@@ -217,17 +413,118 @@ vllmlogs/
 Useful flags:
 
 - `--resume`: continue a compatible incomplete run.
+- `--no-stream-eval`: skip `stream-eval` and write only raw model outputs.
 - `--stream-eval-judger MODEL`: choose the judge model.
 - `--output-dir DIR`: change the output root.
 - `--warm-cache-only`: pre-generate video segment cache on CPU and exit.
 - `--cache-warm-workers N`: set CPU prewarming concurrency.
 
-## Troubleshooting
+`run_env.json` records resolved runtime paths and options. Use it to reproduce a run or inspect which config, input, cache directory, and multi-stream mode were used.
 
-- **vLLM is not ready**: check `outputs/<run>/vllmlogs/<port>.log`; reduce `--gpu-mem-util` or `--max-model-len`, or increase `--tp`. For `--max-model-len` above the model default, set `export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` (this repo uses up to `200000`).
-- **Input path fails**: verify `--input` and `--video-root`. `run.sh` converts paths to absolute paths before launching workers.
-- **API errors**: check API keys, endpoint URLs, and multimodal quota in `configs/models.json`.
-- **Wrong multi-stream behavior**: use `eval_relative_multi_phostream_type.jsonl` for `time`, `code`, `cdpruner`, and `surge`.
+## Directory Structure
+
+```text
+inference/
+|-- README.md
+|-- run.sh                         # Main entrypoint for inference runs
+|-- pipeline.sh                    # vLLM startup, resume, evaluation, cleanup
+|-- pyproject.toml                 # uv environment and dependency pins
+|-- configs/
+|   |-- models.example.json        # Public model-config template
+|   `-- models.json                # Local model config
+|-- tools/
+|-- third_party/
+|   |-- MLLMFlow
+|   |-- ModelHub
+|   |-- stream-eval
+|   `-- xstream_vllm_pruner
+|-- outputs/                       # Generated runs
+`-- cache/                         # Generated video segment cache
+```
+
+## Token Rate Guidelines
+
+Different model providers account for video tokens differently. If a run exceeds the model's video-token or token-per-second budget, reduce the input load by lowering the resolution, lowering the FPS, shortening clips, or changing playback speed according to the model family:
+
+1. Gemini: Fixed 258 tokens/sec (independent of resolution/FPS).
+2. GPT: 85 tokens/frame + 170 tokens per 512$\times$512 tile.
+3. Qwen3+: 28$\times$28 pixel patches per token with token merging.
+
+Use these rules to estimate the effective token rate for your target model, then choose the resolution, FPS, clip length, or playback-speed adjustment that keeps the input within that model's limit.
+
+## FAQ
+
+### Which dataset file should I use?
+
+Use `../data/eval_relative_merged_phostream_type.jsonl` for `pixel`. Use `../data/eval_relative_multi_phostream_type.jsonl` for all multi-stream modes. Use `../data/eval_relative.json` when you need to inspect or validate the dataset manifest itself.
+
+### Why does `eval_relative.json` not appear in `run.sh` examples?
+
+`eval_relative.json` is the release manifest. The inference runner consumes the MLLMFlow-ready JSONL task files, so the executable examples use `eval_relative_merged_phostream_type.jsonl` or `eval_relative_multi_phostream_type.jsonl`.
+
+### `ModuleNotFoundError: No module named 'vllm'`
+
+Run through `uv` or activate this project environment:
+
+```bash
+cd X-Stream/inference
+uv sync --extra local
+uv run bash run.sh --help
+```
+
+### vLLM never becomes healthy
+
+Check `outputs/<run>/vllmlogs/<port>.log`. Common fixes are reducing `--gpu-mem-util`, reducing `--max-model-len`, increasing `--tp`, or setting:
+
+```bash
+export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
+```
+
+This repo commonly uses `--max-model-len 200000` for long multi-stream runs.
+
+### `KeyError: 'QWEN_ENDPOINT'` or `Invalid URL '${QWEN_ENDPOINT}'`
+
+The default judge model uses `${QWEN_ENDPOINT}` and `${QWEN_API_KEY}` placeholders. Export both variables, choose a different `--stream-eval-judger`, or pass `--no-stream-eval` for inference-only runs.
+
+### API model returns 401 or 429
+
+401 usually means the API key or endpoint is invalid. 429 usually means rate limit or quota exhaustion. Check the relevant environment variable and provider quota for the model configured in `configs/models.json`.
+
+### `invalid choice: 'surge_token'` or `invalid choice: 'cdpruner_token'`
+
+The environment is loading an older MLLMFlow. Run from this `inference/` directory and reinstall local editable packages:
+
+```bash
+uv sync --extra local
+```
+
+### Token-level pruning seems inactive
+
+Make sure you are using local vLLM and did not pass `--no-vllm`. Then enable debug logs:
+
+```bash
+XSTREAM_VLLM_PRUNER_DEBUG=1 uv run bash run.sh ...
+```
+
+Look for `xstream_vllm_pruner: enabled` and `compute_retention_mask patch installed` in `outputs/<run>/vllmlogs/*.log`.
+
+### Can I use token-level pruning with API models?
+
+No. `cdpruner_token` and `surge_token` require the X-Stream pruning hook to run inside a local vLLM worker. Hosted API providers do not expose that internal worker path, so API models can only use non-token pruning modes such as `pixel`, `time`, `code`, `code_adaptive`, `cdpruner`, or `surge`.
+
+### Input path fails
+
+Verify both `--input` and `--video-root`. `run.sh` converts paths to absolute paths before launching workers, but it cannot fix a missing file or a video root that does not match the placeholders inside the JSONL.
+
+### How do I resume a failed or interrupted run?
+
+Rerun the same command with:
+
+```bash
+--resume
+```
+
+Finished JSONL rows are skipped when the existing output is compatible with the current command.
 
 ## Discussion
 
@@ -238,6 +535,13 @@ In a typical streaming setting, the question is provided only after the frames h
 
 However, most existing methods for identifying salient tokens rely on question-based importance ranking and keep only the tokens deemed important. As a result, they cannot fundamentally address this limitation. We leave this issue for the community to further explore.
 ```
+
+## Acknowledgements
+
+This inference package builds on ideas and components from the following open-source projects:
+
+- [PhoStream](https://github.com/Lucky-Lance/PhoStream) and [AURA](https://github.com/aurateam2026/AURA) for streaming video understanding infrastructure and evaluation design.
+- [CDPruner](https://github.com/Theia-4869/CDPruner) and [SURGE](https://github.com/BarryTang22/SURGE) for visual token pruning.
 
 ## Citation
 
