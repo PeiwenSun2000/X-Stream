@@ -441,7 +441,7 @@ inference/
 
 Different model providers account for video tokens differently. If a run exceeds the model's video-token or token-per-second budget, reduce the input load by lowering the resolution, lowering the FPS, shortening clips, or changing playback speed according to the model family:
 
-1. Gemini: Fixed 258 tokens/sec (independent of resolution/FPS).
+1. Gemini: Fixed 263 tokens/sec (independent of resolution/FPS).
 2. GPT: 85 tokens/frame + 170 tokens per 512 $\times$ 512 tile.
 3. Qwen3+: 28 $\times$ 28 pixel patches per token with token merging.
 
