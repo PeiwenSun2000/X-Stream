@@ -237,7 +237,7 @@ uv run bash run.sh \
   --cache-warm-workers 64 \
   --cache-dir ./cache \
   --run-id prewarm_multi \
-  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --prompt-root prompts/streaming_prompt \
   --video-root ../data
 ```
 
@@ -258,7 +258,7 @@ uv run bash run.sh \
   --input ../data/eval_relative_merged_phostream_type.jsonl \
   --multi-stream pixel \
   --workers 2 \
-  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --prompt-root prompts/streaming_prompt \
   --video-root ../data \
   --run-id smoke_echo_pixel
 ```
@@ -281,7 +281,7 @@ uv run bash run.sh \
   --tp 2 \
   --workers 4 \
   --max-model-len 200000 \
-  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --prompt-root prompts/streaming_prompt \
   --video-root ../data \
   --run-id qwen3omni_pixel
 ```
@@ -304,7 +304,7 @@ uv run bash run.sh \
   --tp 2 \
   --workers 4 \
   --max-model-len 200000 \
-  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --prompt-root prompts/streaming_prompt \
   --video-root ../data \
   --run-id qwen3omni_time
 ```
@@ -325,11 +325,11 @@ uv run bash run.sh \
   --vllm-model-path /path/to/checkpoints \
   --input ../data/eval_relative_multi_phostream_type.jsonl \
   --multi-stream cdpruner_token \
-  --xstream-rho 0.25 \ # Choose the ratio that fits your data
+  --xstream-rho 0.25 \
   --tp 2 \
   --workers 1 \
   --max-model-len 200000 \
-  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --prompt-root prompts/streaming_prompt \
   --video-root ../data \
   --run-id qwen3omni_cdpruner_token
 ```
@@ -349,7 +349,7 @@ uv run bash run.sh \
   --input ../data/eval_relative_merged_phostream_type.jsonl \
   --multi-stream pixel \
   --workers 8 \
-  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --prompt-root prompts/streaming_prompt \
   --video-root ../data \
   --run-id api_qwen3vl_pixel
 ```
@@ -396,6 +396,11 @@ inference/
 |-- configs/
 |   |-- models.example.json        # Public model-config template
 |   `-- models.json                # Local model config
+|-- prompts/
+|   |-- streaming_prompt/
+|   |   `-- system_prompt.txt      # Streaming QA prompt resolved by {{file:system_prompt.txt}}
+|   `-- general_prompt/
+|       `-- system_prompt.txt      # General-purpose prompt for custom runs
 |-- tools/
 |-- third_party/
 |   |-- MLLMFlow
