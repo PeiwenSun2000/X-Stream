@@ -10,15 +10,62 @@ The `inference/` package keeps the runtime simple: most users only need `run.sh`
 
 Supported multi-stream modes:
 
-| Mode                    | Multiplexing term                                | Meaning                                                                                                                                                                                             | Input file                                  |
-| ----------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `pixel`                 | Spatial Division Multiplexing                    | Uses the pre-merged video input and sends each tiled visual stream as one spatial canvas without multi-stream segment expansion.                                                                    | `eval_relative_merged_phostream_type.jsonl` |
-| `time`                  | Time Division Multiplexing                       | Splits step-based video placeholders into segments and interleaves them as `Stream 1: A1`, `Stream 2: B1`, `Stream 1: A2`, `Stream 2: B2`, and so on.                                               | `eval_relative_multi_phostream_type.jsonl`  |
-| `code`, `code_adaptive` | Extra Exploration                                | `code` keeps the stream segment with the larger video-change score and marks the others as unchanged, while `code_adaptive` scales each changed stream's FPS between 0x and 2x based on that score. | `eval_relative_multi_phostream_type.jsonl`  |
-| `cdpruner`              | Semantic Division Multiplexing (Dropping frames) | Reuses time-style interleaving, then applies client-side media selection with CDPruner-style instruction relevance and diversity before the model call.                                             | `eval_relative_multi_phostream_type.jsonl`  |
-| `surge`                 | Extra Exploration                                | Reuses time-style interleaving, then applies client-side SURGE-style temporal surprise selection before the model call.                                                                             | `eval_relative_multi_phostream_type.jsonl`  |
-| `cdpruner_token`        | Semantic Division Multiplexing                   | Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level CDPruner token selection inside video frames.                 | `eval_relative_multi_phostream_type.jsonl`  |
-| `surge_token`           | Extra Exploration                                | Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level SURGE token selection inside video frames.                    | `eval_relative_multi_phostream_type.jsonl`  |
+<!-- markdownlint-disable MD033 -->
+<table>
+  <thead>
+    <tr>
+      <th width="12%">Mode</th>
+      <th width="26%">Multiplexing term</th>
+      <th width="46%">Meaning</th>
+      <th width="16%">Input file</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>pixel</code></td>
+      <td>Spatial Division Multiplexing</td>
+      <td>Uses the pre-merged video input and sends each tiled visual stream as one spatial canvas without multi-stream segment expansion.</td>
+      <td><code>eval_relative_merged_phostream_type.jsonl</code></td>
+    </tr>
+    <tr>
+      <td><code>time</code></td>
+      <td>Time Division Multiplexing</td>
+      <td>Splits step-based video placeholders into segments and interleaves them as <code>Stream 1: A1</code>, <code>Stream 2: B1</code>, <code>Stream 1: A2</code>, <code>Stream 2: B2</code>, and so on.</td>
+      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+    </tr>
+    <tr>
+      <td><code>code</code>, <code>code_adaptive</code></td>
+      <td>Extra Exploration</td>
+      <td><code>code</code> keeps the stream segment with the larger video-change score and marks the others as unchanged, while <code>code_adaptive</code> scales each changed stream's FPS between 0x and 2x based on that score.</td>
+      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+    </tr>
+    <tr>
+      <td><code>cdpruner</code></td>
+      <td>Semantic Division Multiplexing (Dropping frames)</td>
+      <td>Reuses time-style interleaving, then applies client-side media selection with CDPruner-style instruction relevance and diversity before the model call.</td>
+      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+    </tr>
+    <tr>
+      <td><code>surge</code></td>
+      <td>Extra Exploration</td>
+      <td>Reuses time-style interleaving, then applies client-side SURGE-style temporal surprise selection before the model call.</td>
+      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+    </tr>
+    <tr>
+      <td><code>cdpruner_token</code></td>
+      <td>Semantic Division Multiplexing</td>
+      <td>Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level CDPruner token selection inside video frames.</td>
+      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+    </tr>
+    <tr>
+      <td><code>surge_token</code></td>
+      <td>Extra Exploration</td>
+      <td>Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level SURGE token selection inside video frames.</td>
+      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+    </tr>
+  </tbody>
+</table>
+<!-- markdownlint-enable MD033 -->
 
 `cdpruner_token` and `surge_token` are only available with local vLLM. Hosted API models cannot run patch-level token pruning because the pruning hook must be installed inside the vLLM worker.
 
@@ -210,7 +257,7 @@ inference/
 
 For other local models, keep the same rule: the directory name under `checkpoints/` should match the logical model key passed through `--model`, or `--vllm-model-path` should point directly to a checkpoint directory with `config.json`.
 
-### 6. CLIP Weights For Pruning Modes
+### 6. (Optional) CLIP Weights For Pruning Modes
 
 Some pruning modes use CLIP features in addition to the main MLLM checkpoint:
 
@@ -236,25 +283,6 @@ huggingface-cli download openai/clip-vit-large-patch14-336
 ```
 
 Segment-level `cdpruner` and `surge` fall back to the default media-limit behavior if CLIP cannot be loaded, so the run may continue but it will not use the intended pruning strategy.
-
-### 7. Runtime Option Checklist
-
-For full local vLLM runs, keep these options together unless you intentionally change the experiment:
-
-| Option                                                                          | Why it matters                                                                                                         |
-| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `--model Qwen3-Omni-30B-A3B-Instruct`                                           | Selects the logical model key from `configs/models.json`.                                                              |
-| `--vllm-model-path /path/to/checkpoints`                                        | Points vLLM to the local checkpoint root.                                                                              |
-| `--input ../data/eval_relative_*.jsonl`                                         | Selects the MLLMFlow-ready task file.                                                                                  |
-| `--multi-stream MODE`                                                           | Selects `pixel`, `time`, `code`, `code_adaptive`, `cdpruner`, `surge`, `cdpruner_token`, or `surge_token`.             |
-| `--video-root ../data`                                                          | Resolves `{{video:...}}` placeholders in the JSONL inputs.                                                             |
-| `--prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt` | Resolves `{{file:system_prompt.txt}}` in the JSONL inputs.                                                             |
-| `--tp 2`                                                                        | Sets vLLM tensor parallel size per service. Match this to your GPU count and memory.                                   |
-| `--workers 4`                                                                   | Sets MLLMFlow request concurrency. Use `1` for token-level pruning modes unless you have validated higher concurrency. |
-| `--max-model-len 200000`                                                        | Allows long multi-stream contexts; keep `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` when using this value.                       |
-| `--run-id NAME`                                                                 | Gives the output directory a reproducible, readable name.                                                              |
-
-For hosted API or smoke-test runs, add `--no-vllm`. For inference-only runs, add `--no-stream-eval`. Do not use `cdpruner_token` or `surge_token` with hosted API models; use `pixel`, `time`, `code`, `code_adaptive`, `cdpruner`, or `surge` instead.
 
 ## Usage
 
@@ -461,70 +489,6 @@ Use `../data/eval_relative_merged_phostream_type.jsonl` for `pixel`. Use `../dat
 ### Why does `eval_relative.json` not appear in `run.sh` examples?
 
 `eval_relative.json` is the release manifest. The inference runner consumes the MLLMFlow-ready JSONL task files, so the executable examples use `eval_relative_merged_phostream_type.jsonl` or `eval_relative_multi_phostream_type.jsonl`.
-
-### `ModuleNotFoundError: No module named 'vllm'`
-
-Run through `uv` or activate this project environment:
-
-```bash
-cd X-Stream/inference
-uv sync --extra local
-uv run bash run.sh --help
-```
-
-### vLLM never becomes healthy
-
-Check `outputs/<run>/vllmlogs/<port>.log`. Common fixes are reducing `--gpu-mem-util`, reducing `--max-model-len`, increasing `--tp`, or setting:
-
-```bash
-export VLLM_ALLOW_LONG_MAX_MODEL_LEN=1
-```
-
-This repo commonly uses `--max-model-len 200000` for long multi-stream runs.
-
-### `KeyError: 'QWEN_ENDPOINT'` or `Invalid URL '${QWEN_ENDPOINT}'`
-
-The default judge model uses `${QWEN_ENDPOINT}` and `${QWEN_API_KEY}` placeholders. Export both variables, choose a different `--stream-eval-judger`, or pass `--no-stream-eval` for inference-only runs.
-
-### API model returns 401 or 429
-
-401 usually means the API key or endpoint is invalid. 429 usually means rate limit or quota exhaustion. Check the relevant environment variable and provider quota for the model configured in `configs/models.json`.
-
-### `invalid choice: 'surge_token'` or `invalid choice: 'cdpruner_token'`
-
-The environment is loading an older MLLMFlow. Run from this `inference/` directory and reinstall local editable packages:
-
-```bash
-uv sync --extra local
-```
-
-### Token-level pruning seems inactive
-
-Make sure you are using local vLLM and did not pass `--no-vllm`. Then enable debug logs:
-
-```bash
-XSTREAM_VLLM_PRUNER_DEBUG=1 uv run bash run.sh ...
-```
-
-Look for `xstream_vllm_pruner: enabled` and `compute_retention_mask patch installed` in `outputs/<run>/vllmlogs/*.log`.
-
-### Can I use token-level pruning with API models?
-
-No. `cdpruner_token` and `surge_token` require the X-Stream pruning hook to run inside a local vLLM worker. Hosted API providers do not expose that internal worker path, so API models can only use non-token pruning modes such as `pixel`, `time`, `code`, `code_adaptive`, `cdpruner`, or `surge`.
-
-### Input path fails
-
-Verify both `--input` and `--video-root`. `run.sh` converts paths to absolute paths before launching workers, but it cannot fix a missing file or a video root that does not match the placeholders inside the JSONL.
-
-### How do I resume a failed or interrupted run?
-
-Rerun the same command with:
-
-```bash
---resume
-```
-
-Finished JSONL rows are skipped when the existing output is compatible with the current command.
 
 ## Discussion
 
