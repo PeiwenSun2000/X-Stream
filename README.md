@@ -14,10 +14,10 @@ Supported multi-stream modes:
 <table>
   <thead>
     <tr>
-      <th width="12%">Mode</th>
-      <th width="26%">Multiplexing term</th>
-      <th width="46%">Meaning</th>
-      <th width="16%">Input file</th>
+      <th width="10%">Mode</th>
+      <th width="22%">Multiplexing term</th>
+      <th width="50%">Meaning</th>
+      <th width="18%">Input file</th>
     </tr>
   </thead>
   <tbody>
@@ -25,43 +25,43 @@ Supported multi-stream modes:
       <td><code>pixel</code></td>
       <td>Spatial Division Multiplexing</td>
       <td>Uses the pre-merged video input and sends each tiled visual stream as one spatial canvas without multi-stream segment expansion.</td>
-      <td><code>eval_relative_merged_phostream_type.jsonl</code></td>
+      <td><code>eval_relative_merged_<br>phostream_type.jsonl</code></td>
     </tr>
     <tr>
       <td><code>time</code></td>
       <td>Time Division Multiplexing</td>
       <td>Splits step-based video placeholders into segments and interleaves them as <code>Stream 1: A1</code>, <code>Stream 2: B1</code>, <code>Stream 1: A2</code>, <code>Stream 2: B2</code>, and so on.</td>
-      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+      <td><code>eval_relative_multi_<br>phostream_type.jsonl</code></td>
     </tr>
     <tr>
-      <td><code>code</code>, <code>code_adaptive</code></td>
+      <td><code>code</code><br><code>code_adaptive</code></td>
       <td>Extra Exploration</td>
       <td><code>code</code> keeps the stream segment with the larger video-change score and marks the others as unchanged, while <code>code_adaptive</code> scales each changed stream's FPS between 0x and 2x based on that score.</td>
-      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+      <td><code>eval_relative_multi_<br>phostream_type.jsonl</code></td>
     </tr>
     <tr>
       <td><code>cdpruner</code></td>
       <td>Semantic Division Multiplexing (Dropping frames)</td>
       <td>Reuses time-style interleaving, then applies client-side media selection with CDPruner-style instruction relevance and diversity before the model call.</td>
-      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+      <td><code>eval_relative_multi_<br>phostream_type.jsonl</code></td>
     </tr>
     <tr>
       <td><code>surge</code></td>
       <td>Extra Exploration</td>
       <td>Reuses time-style interleaving, then applies client-side SURGE-style temporal surprise selection before the model call.</td>
-      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+      <td><code>eval_relative_multi_<br>phostream_type.jsonl</code></td>
     </tr>
     <tr>
       <td><code>cdpruner_token</code></td>
       <td>Semantic Division Multiplexing</td>
       <td>Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level CDPruner token selection inside video frames.</td>
-      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+      <td><code>eval_relative_multi_<br>phostream_type.jsonl</code></td>
     </tr>
     <tr>
       <td><code>surge_token</code></td>
       <td>Extra Exploration</td>
       <td>Reuses time-style interleaving and forwards pruning metadata to the local vLLM worker, where the X-Stream pruner performs patch-level SURGE token selection inside video frames.</td>
-      <td><code>eval_relative_multi_phostream_type.jsonl</code></td>
+      <td><code>eval_relative_multi_<br>phostream_type.jsonl</code></td>
     </tr>
   </tbody>
 </table>
