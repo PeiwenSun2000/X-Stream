@@ -259,17 +259,6 @@ For other local models, keep the same rule: the directory name under `checkpoint
 
 ### 6. (Optional) CLIP Weights For Pruning Modes
 
-Some pruning modes use CLIP features in addition to the main MLLM checkpoint:
-
-| Mode | CLIP usage |
-| --- | --- |
-| `cdpruner` | Uses `openai/clip-vit-large-patch14-336` for instruction relevance and visual diversity before the model call. |
-| `surge` | Uses `openai/clip-vit-large-patch14-336` to embed representative video frames before the model call; this is a client-side segment-level SURGE approximation, not vLLM-internal token pruning. |
-| `cdpruner_token` | Uses the CLIP text tower lazily when instruction text is available; if CLIP is unavailable, it falls back to visual-only diversity inside the local vLLM worker. |
-| `surge_token` | Does not require CLIP; it runs inside the local vLLM worker and computes surprise directly from post-vision-encoder video token embeddings. |
-
-If the machine has internet access, the CLIP weights are downloaded lazily through `transformers`. For offline or firewalled machines, pre-populate the Hugging Face cache before running pruning modes:
-
 ```bash
 pip install -U huggingface_hub
 huggingface-cli download openai/clip-vit-large-patch14-336
@@ -475,8 +464,8 @@ inference/
 Different model providers account for video tokens differently. If a run exceeds the model's video-token or token-per-second budget, reduce the input load by lowering the resolution, lowering the FPS, shortening clips, or changing playback speed according to the model family:
 
 1. Gemini: Fixed 258 tokens/sec (independent of resolution/FPS).
-2. GPT: 85 tokens/frame + 170 tokens per 512$\times$512 tile.
-3. Qwen3+: 28$\times$28 pixel patches per token with token merging.
+2. GPT: 85 tokens/frame + 170 tokens per 512 $\times$ 512 tile.
+3. Qwen3+: 28 $\times$ 28 pixel patches per token with token merging.
 
 Use these rules to estimate the effective token rate for your target model, then choose the resolution, FPS, clip length, or playback-speed adjustment that keeps the input within that model's limit.
 
