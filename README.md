@@ -1,6 +1,6 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
-# <img src="assets/logo.png" alt="X-Stream logo" width="10%"> X-Stream Inference
+# <img src="assets/logo.png" alt="X-Stream logo" width="10%"> X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding
 
 Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**. This package runs online multi-stream video QA with local vLLM checkpoints or hosted API models.
 
@@ -88,7 +88,7 @@ Supported multi-stream modes:
 </table>
 <!-- markdownlint-enable MD033 -->
 
-`cdpruner_token` and `surge_token` are only available with local vLLM. Hosted API models cannot run patch-level token pruning because the pruning hook must be installed inside the vLLM worker. The token-pruning backend covers Qwen-series variants with hard pruning (EVS) on Qwen2.5/3-VL and Qwen3-VL MoE, and soft pruning on Qwen2-VL, Qwen2.5-Omni Thinker, and Qwen3-Omni MoE Thinker. See [`third_party/xstream_vllm_pruner/README.md`](third_party/xstream_vllm_pruner/README.md) for backend details.
+`cdpruner_token` and `surge_token` are only available with local vLLM. Hosted API models cannot run patch-level token pruning because the pruning hook must be installed inside the vLLM worker.
 
 ## Environment Setup
 
