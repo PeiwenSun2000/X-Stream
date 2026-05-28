@@ -137,60 +137,7 @@ python data/scripts/extract_archives.py --dataset-root data --splits eval
 python data/scripts/extract_archives.py --dataset-root data --kinds reencoded
 ```
 
-### 3. Data Files
-
-After download and extraction, the expected dataset root looks like this:
-
-```text
-data/
-|-- eval_relative.json
-|-- train_relative.json
-|-- eval_relative_merged_phostream_type.jsonl
-|-- eval_relative_multi_phostream_type.jsonl
-|-- archives/
-|   |-- SHA256SUMS
-|   |-- archives.json
-|   |-- eval/
-|   `-- train/
-|-- scripts/
-|   `-- extract_archives.py
-`-- data/
-    |-- eval/
-    |   |-- merged/
-    |   |-- reencoded/
-    |   `-- original/
-    `-- train/
-        |-- merged/
-        |-- reencoded/
-        `-- original/
-```
-
-The official dataset manifests are JSON Lines files with a `.json` extension:
-
-```text
-../data/eval_relative.json
-../data/train_relative.json
-```
-
-Each record stores video paths relative to the dataset root. The main fields are:
-
-- `merged_video_path`: a merged multi-stream video under `data/eval/merged/` or `data/train/merged/`.
-- `encoded_video_path`: synchronized per-stream videos under `data/eval/reencoded/` or `data/train/reencoded/`.
-- `original_video_path`: higher-fps source videos under `data/eval/original/` or `data/train/original/`.
-- `verified_responses`: verified QA annotations.
-
-The inference runner uses the MLLMFlow-ready evaluation JSONL files:
-
-```text
-../data/eval_relative_merged_phostream_type.jsonl
-../data/eval_relative_multi_phostream_type.jsonl
-```
-
-Use `eval_relative_merged_phostream_type.jsonl` with `--multi-stream pixel`. Use `eval_relative_multi_phostream_type.jsonl` with `time`, `code`, `code_adaptive`, `cdpruner`, `surge`, `cdpruner_token`, and `surge_token`.
-
-Use `eval_relative.json` for dataset inspection, upload checks, and release validation. `run.sh` expects the MLLMFlow-ready JSONL files above for inference.
-
-### 4. Local Runtime Variables
+### 3. Local Runtime Variables
 
 For local vLLM checkpoint runs:
 
@@ -217,7 +164,7 @@ export GEMINI_API_KEY=<your-gemini-api-key>
 
 For a quick smoke test or inference-only run, add `--no-stream-eval` to avoid judge credentials.
 
-### 5. Model Checkpoints
+### 4. Model Checkpoints
 
 Local vLLM runs need a downloaded checkpoint. The examples below use `Qwen3-Omni-30B-A3B-Instruct`, whose logical model name must match the key in `configs/models.json`.
 
@@ -257,7 +204,7 @@ inference/
 
 For other local models, keep the same rule: the directory name under `checkpoints/` should match the logical model key passed through `--model`, or `--vllm-model-path` should point directly to a checkpoint directory with `config.json`.
 
-### 6. (Optional) CLIP Weights For Pruning Modes
+### 5. (Optional) CLIP Weights For Pruning Modes
 
 ```bash
 pip install -U huggingface_hub
@@ -276,6 +223,27 @@ Segment-level `cdpruner` and `surge` fall back to the default media-limit behavi
 ## Usage
 
 Start with the API-free smoke test, then add vLLM, hosted API models, or evaluation as needed.
+
+### 0. (Optional) CPU Cache Prewarming
+
+Long multi-stream videos are split into cached MP4 segments before model inference. This MoviePy and ffmpeg stage is CPU-bound. Prewarm the cache on a CPU machine before a GPU run.
+
+```bash
+cd X-Stream/inference
+uv run bash run.sh \
+  --input ../data/eval_relative_multi_phostream_type.jsonl \
+  --warm-cache-only \
+  --workers 64 \
+  --cache-warm-workers 64 \
+  --cache-dir ./cache \
+  --run-id prewarm_multi \
+  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
+  --video-root ../data
+```
+
+`--warm-cache-only` does not start vLLM and does not call any model. It only resolves `{{video:...}}` placeholders and writes the segment cache. Keep `--cache-dir`, `--input`, `--video-root`, and video placeholder parameters identical between prewarming and the later GPU run.
+
+For `time`, `cdpruner`, `surge`, `cdpruner_token`, and `surge_token`, `--multi-stream` can be omitted during prewarming because the same base video segments are generated. For `code_adaptive`, pass the same `--multi-stream code_adaptive` as the later run because it may create additional fps-scaled segments.
 
 ### 1. API-Free Smoke Test
 
@@ -385,27 +353,6 @@ uv run bash run.sh \
   --video-root ../data \
   --run-id api_qwen3vl_pixel
 ```
-
-### 6. CPU Cache Prewarming
-
-Long multi-stream videos are split into cached MP4 segments before model inference. This MoviePy and ffmpeg stage is CPU-bound. Prewarm the cache on a CPU machine before a GPU run.
-
-```bash
-cd X-Stream/inference
-uv run bash run.sh \
-  --input ../data/eval_relative_multi_phostream_type.jsonl \
-  --warm-cache-only \
-  --workers 64 \
-  --cache-warm-workers 64 \
-  --cache-dir ./cache \
-  --run-id prewarm_multi \
-  --prompt-root third_party/MLLMFlow/annotations/system_prompt/streaming_prompt \
-  --video-root ../data
-```
-
-`--warm-cache-only` does not start vLLM and does not call any model. It only resolves `{{video:...}}` placeholders and writes the segment cache. Keep `--cache-dir`, `--input`, `--video-root`, and video placeholder parameters identical between prewarming and the later GPU run.
-
-For `time`, `cdpruner`, `surge`, `cdpruner_token`, and `surge_token`, `--multi-stream` can be omitted during prewarming because the same base video segments are generated. For `code_adaptive`, pass the same `--multi-stream code_adaptive` as the later run because it may create additional fps-scaled segments.
 
 ## Outputs And Evaluation
 
