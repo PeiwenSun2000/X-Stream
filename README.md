@@ -2,11 +2,12 @@
 
 # <img src="assets/logo.png" alt="X-Stream logo" width="10%"> X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding
 
-**Authors:** Peiwen Sun<sup>1</sup>, Xudong Lu<sup>1</sup>, Huadai Liu<sup>3</sup>, Yang Bo<sup>2</sup>, Dongming Wu<sup>1</sup>, Huankang Guan<sup>2</sup>, Minghong Cai<sup>1</sup>, Jinpeng Chen<sup>2</sup>, Xintong Guo<sup>2</sup>, Shuhan Li<sup>2</sup>, Rui Liu<sup>2</sup>, and Xiangyu Yue<sup>1</sup>.
+**Authors:** Peiwen Sun<sup>*1</sup>, Xudong Lu<sup>*1</sup>, Huadai Liu<sup>*3</sup>, Yang Bo<sup>2</sup>, Dongming Wu<sup>1</sup>, Huankang Guan<sup>2</sup>, Minghong Cai<sup>1</sup>, Jinpeng Chen<sup>2</sup>, Xintong Guo<sup>2</sup>, Shuhan Li<sup>2</sup>, Rui Liu<sup>2</sup>, and Xiangyu Yue<sup>&dagger;1</sup>.
 
 **Affiliations:** <sup>1</sup>MMLab, The Chinese University of Hong Kong; <sup>2</sup>Huawei Inc.; <sup>3</sup>Independent.
 
 Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**. This package runs online multi-stream video QA with local vLLM checkpoints or hosted API models.
+
 
 <p align="center">
   <a href="https://peiwensun2000.github.io/xstream/"><img src="https://img.shields.io/badge/Project-Website-blue" alt="Project Website"></a>
@@ -112,8 +113,15 @@ Install the project environment:
 
 ```bash
 git clone https://github.com/PeiwenSun2000/X-Stream.git
-cd X-Stream/inference
+cd X-Stream
 uv sync --extra local
+```
+
+If you are working from a monorepo checkout where this package lives under an `inference/` subdirectory, run the same `uv sync --extra local` command from that `inference/` directory instead. If your default `python3` is not Python 3.12, point uv at a 3.12 interpreter explicitly:
+
+```bash
+UV_PYTHON=/path/to/python3.12 uv sync --extra local
+uv run python --version
 ```
 
 Use `uv run` for commands:
@@ -135,9 +143,15 @@ Create a local model configuration:
 cp configs/models.example.json configs/models.json
 ```
 
+For reproducible environment comparisons, prefer uv over invoking `pip` directly because uv-created virtual environments may not include the `pip` Python module:
+
+```bash
+uv pip freeze --python .venv/bin/python > env.freeze.txt
+```
+
 ### 2. Download Data
 
-Download the X-Stream dataset from [Hugging Face](https://huggingface.co/datasets/spw2000/X-stream). The dataset is distributed as JSONL manifests plus compressed video archives. In this repository, the examples place the downloaded dataset root directly at `data/`, so commands launched from `inference/` can refer to it as `../data`.
+Download the X-Stream dataset from [Hugging Face](https://huggingface.co/datasets/spw2000/X-stream). The dataset is distributed as JSONL manifests plus compressed video archives. In a monorepo checkout, the examples place the downloaded dataset root directly at the repository-level `data/`, so commands launched from `inference/` can refer to it as `../data`. In a standalone public `X-Stream` checkout, either place the dataset as a sibling directory and keep using `../data`, or place it at `X-Stream/data` and change the example `--input` and `--video-root` paths from `../data` to `data`.
 
 ```bash
 cd X-Stream
@@ -445,7 +459,7 @@ inference/
 
 Different model providers account for video tokens differently. If a run exceeds the model's video-token or token-per-second budget, reduce the input load by lowering the resolution, lowering the FPS, shortening clips, or changing playback speed according to the model family:
 
-1. Gemini: Fixed 263 tokens/sec (independent of resolution/FPS).
+1. Gemini: Fixed 258 tokens/sec (independent of resolution/FPS).
 2. GPT: 85 tokens/frame + 170 tokens per 512 $\times$ 512 tile.
 3. Qwen3+: 28 $\times$ 28 pixel patches per token with token merging.
 
