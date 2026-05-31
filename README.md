@@ -475,6 +475,10 @@ Use `../data/eval_relative_merged_phostream_type.jsonl` for `pixel`. Use `../dat
 
 `eval_relative.json` is the release manifest. The inference runner consumes the MLLMFlow-ready JSONL task files, so the executable examples use `eval_relative_merged_phostream_type.jsonl` or `eval_relative_multi_phostream_type.jsonl`.
 
+### ValueError: t:1 must be larger than temgoral_factor:2
+
+Change the value of `FLOW_VIDEO_URL_FPS` from `1` to `2` in each `*.jsonl` input file.
+
 ## Discussion
 
 1. Drawback of semantic multiplexing.
