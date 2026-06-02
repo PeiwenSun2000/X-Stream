@@ -2,7 +2,7 @@
 
 # <img src="assets/logo.png" alt="X-Stream logo" width="10%"> X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding
 
-**Authors:** Peiwen Sun<sup>*1</sup>, Xudong Lu<sup>*1</sup>, Huadai Liu<sup>*3</sup>, Yang Bo<sup>2</sup>, Dongming Wu<sup>1</sup>, Huankang Guan<sup>2</sup>, Minghong Cai<sup>1</sup>, Jinpeng Chen<sup>2</sup>, Xintong Guo<sup>2</sup>, Shuhan Li<sup>2</sup>, Rui Liu<sup>2</sup>, and Xiangyu Yue<sup>&dagger;1</sup>.
+**Authors:** Peiwen Sun<sup>*1</sup>, Xudong Lu<sup>*1</sup>, Huadai Liu<sup>*3</sup>, Yang Bo<sup>2</sup>, Dongming Wu<sup>1</sup>, Huankang Guan<sup>2</sup>, Minghong Cai<sup>1</sup>, Jinpeng Chen<sup>2</sup>, Xintong Guo<sup>2</sup>, Shuhan Li<sup>2</sup>, Fang Liu<sup>2</sup>, Rui Liu<sup>2</sup>, and Xiangyu Yue<sup>&dagger;1</sup>.
 
 **Affiliations:** <sup>1</sup>MMLab, The Chinese University of Hong Kong; <sup>2</sup>Huawei Inc.; <sup>3</sup>Independent.
 
