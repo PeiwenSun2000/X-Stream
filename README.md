@@ -499,12 +499,12 @@ This inference package builds on ideas and components from the following open-so
 ## Citation
 
 ```bibtex
-@article{sun2026xstream,
-      title={X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding},
-      author={Sun, Peiwen and Lu, Xudong and Liu, Huadai and Bo, Yang and Wu, Dongming and Guan, Huankang and Cai, Minghong and Chen, Jinpeng and Guo, Xintong and Li, Shuhan and Liu, Rui and Yue, Xiangyu},
-      journal={arXiv preprint arXiv:2606.02482},
-      year={2026}
-    }
+@article{sun2026x,
+  title={X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding},
+  author={Sun, Peiwen and Lu, Xudong and Liu, Huadai and Bo, Yang and Wu, Dongming and Guan, Huankang and Cai, Minghong and Chen, Jinpeng and Guo, Xintong and Li, Shuhan and others},
+  journal={arXiv preprint arXiv:2606.02482},
+  year={2026}
+}
 ```
 
 ## License
