@@ -6,7 +6,9 @@
 
 **Affiliations:** <sup>1</sup>MMLab, The Chinese University of Hong Kong; <sup>2</sup>Huawei Inc.; <sup>3</sup>Independent.
 
-Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**. This package runs online multi-stream video QA with local vLLM checkpoints or hosted API models.
+🎉🎉🎉 **ECCV 2026**： See you in Malmö!
+
+Official inference and evaluation code for **X-Stream: Exploring MLLMs as Multiplexers for Multi-Stream Understanding**.
 
 
 <p align="center">
